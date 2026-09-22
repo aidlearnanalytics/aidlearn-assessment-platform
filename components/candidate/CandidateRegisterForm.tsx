@@ -10,24 +10,25 @@ import {
   Briefcase,
   ArrowRight,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 
-interface CompanyOption {
+interface Company {
   id: string;
   name: string;
   slug: string;
   industry?: string | null;
 }
 
+interface CandidateRegisterFormProps {
+  companies: Company[];
+}
+
 export default function CandidateRegisterForm({
-  companies = [],
-}: {
-  companies: CompanyOption[];
-}) {
+  companies,
+}: CandidateRegisterFormProps) {
   const router = useRouter();
 
-  const [companyId, setCompanyId] = useState<string>(
+  const [companyId, setCompanyId] = useState(
     companies.length > 0 ? companies[0].id : ""
   );
   const [fullName, setFullName] = useState("");
@@ -75,10 +76,6 @@ export default function CandidateRegisterForm({
   return (
     <div className="bg-white rounded-2xl border border-slate-200/90 p-6 sm:p-8 shadow-sm">
       <div className="mb-6 text-center">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-[#1d4ed8] text-xs font-semibold mb-3">
-          <Sparkles className="w-3.5 h-3.5" />
-          Proctored Skills Diagnostic
-        </div>
         <h2 className="text-xl sm:text-2xl font-bold text-[#0f172a] tracking-tight">
           Candidate Registration
         </h2>
