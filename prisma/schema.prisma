@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -55,7 +55,7 @@ model Question {
   id            String    @id @default(cuid())
   prompt        String
   type          String    @default("MULTIPLE_CHOICE")
-  options       String?
+  options       Json?
   correctAnswer String?
   explanation   String?
   difficulty    String
@@ -95,8 +95,8 @@ model Assessment {
 
   durationMinutes    Int      @default(45)
   numQuestions       Int      @default(20)
-  difficultyMix      String?
-  categories         String?
+  difficultyMix      Json?
+  categories         Json?
 
   randomizeQuestions Boolean  @default(true)
   randomizeOptions    Boolean  @default(true)
@@ -160,9 +160,9 @@ model AssessmentAttempt {
 
   overallScore     Float?
   overallPct       Float?
-  categoryScores   String?
-  difficultyScores String?
-  aiDiagnostic     String?
+  categoryScores   Json?
+  difficultyScores Json?
+  aiDiagnostic     Json?
 
   answers          Answer[]
   violations       ViolationLog[]
@@ -176,7 +176,7 @@ model Answer {
   attempt       AssessmentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   questionId    String
   question      Question          @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  response      String
+  response      Json
   isCorrect     Boolean?
   pointsAwarded Float?
   answeredAt    DateTime          @default(now())

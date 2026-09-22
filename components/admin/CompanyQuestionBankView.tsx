@@ -20,7 +20,7 @@ interface QuestionItem {
   id: string;
   prompt: string;
   type: string;
-  options?: string | null;
+  options?: any;
   correctAnswer?: string | null;
   explanation?: string | null;
   difficulty: string;
@@ -43,79 +43,63 @@ interface CompanyQuestionBankProps {
 export default function CompanyQuestionBankView({ company }: CompanyQuestionBankProps) {
   const router = useRouter();
 
-  // Modals
+  // Modals state
+  const [showNewModal, setShowNewModal] = useState(false);
   const [showAIModal, setShowAIModal] = useState(false);
-  const [showManualModal, setShowManualModal] = useState(false);
 
-  // AI Generator Form State
-  const [aiTopic, setAiTopic] = useState("Financial Modeling & Valuation");
-  const [aiIndustry, setAiIndustry] = useState(company.industry || "Corporate Finance & Banking");
-  const [aiDifficulty, setAiDifficulty] = useState<"easy" | "intermediate" | "hard" | "expert">("intermediate");
-  const [aiCount, setAiCount] = useState(5);
-  const [aiNotes, setAiNotes] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-
-  // Manual Question Form State
+  // Manual Question Form
   const [prompt, setPrompt] = useState("");
-  const [skillName, setSkillName] = useState("Excel");
-  const [difficulty, setDifficulty] = useState("intermediate");
+  const [type, setType] = useState("MULTIPLE_CHOICE");
+  const [difficulty, setDifficulty] = useState("INTERMEDIATE");
   const [points, setPoints] = useState(1);
   const [explanation, setExplanation] = useState("");
   const [options, setOptions] = useState([
-    { key: "A", text: "", isCorrect: true },
-    { key: "B", text: "", isCorrect: false },
-    { key: "C", text: "", isCorrect: false },
-    { key: "D", text: "", isCorrect: false },
+    { text: "", isCorrect: true },
+    { text: "", isCorrect: false },
+    { text: "", isCorrect: false },
+    { text: "", isCorrect: false },
   ]);
-  const [manualLoading, setManualLoading] = useState(false);
-  const [manualError, setManualError] = useState<string | null>(null);
+  const [formulaAnswer, setFormulaAnswer] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  // AI Generation Submit
-  async function handleAIGenerate(e: React.FormEvent) {
+  // AI Generator Form
+  const [aiTopic, setAiTopic] = useState("Financial Modeling & Three Statement Valuation");
+  const [aiDifficulty, setAiDifficulty] = useState("INTERMEDIATE");
+  const [aiCount, setAiCount] = useState(5);
+  const [aiNotes, setAiNotes] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [generationMsg, setGenerationMsg] = useState<string | null>(null);
+
+  // Filter state
+  const [searchFilter, setSearchFilter] = useState("");
+  const [difficultyFilter, setDifficultyFilter] = useState("ALL");
+
+  const filteredQuestions = company.questions.filter((q) => {
+    const matchesSearch = q.prompt.toLowerCase().includes(searchFilter.toLowerCase());
+    const matchesDiff = difficultyFilter === "ALL" || q.difficulty === difficultyFilter;
+    return matchesSearch && matchesDiff;
+  });
+
+  const handleCreateManualQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!aiTopic.trim()) return;
+    setSubmitting(true);
 
-    setAiLoading(true);
-    setAiError(null);
+    let finalOptions: any = null;
+    let finalCorrectAnswer: string | null = null;
 
-    try {
-      const res = await fetch("/api/questions/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          companyId: company.id,
-          topic: aiTopic.trim(),
-          industry: aiIndustry.trim(),
-          difficulty: aiDifficulty,
-          numQuestions: Number(aiCount),
-          notes: aiNotes.trim() || undefined,
-          autoApprove: true,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to generate questions");
-      }
-
-      setShowAIModal(false);
-      setAiNotes("");
-      router.refresh();
-    } catch (err: any) {
-      setAiError(err.message || "Failed to generate questions with AI");
-    } finally {
-      setAiLoading(false);
+    if (type === "MULTIPLE_CHOICE" || type === "MULTIPLE_SELECT" || type === "TRUE_FALSE") {
+      finalOptions = options
+        .filter((o) => o.text.trim())
+        .map((o, idx) => ({
+          id: String(idx + 1),
+          text: o.text.trim(),
+          isCorrect: o.isCorrect,
+        }));
+      const correct = finalOptions.find((o: any) => o.isCorrect);
+      finalCorrectAnswer = correct ? correct.text : null;
+    } else {
+      finalCorrectAnswer = formulaAnswer.trim();
     }
-  }
-
-  // Manual Creation Submit
-  async function handleManualCreate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!prompt.trim()) return;
-
-    setManualLoading(true);
-    setManualError(null);
 
     try {
       const res = await fetch("/api/questions", {
@@ -123,124 +107,171 @@ export default function CompanyQuestionBankView({ company }: CompanyQuestionBank
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           companyId: company.id,
-          prompt: prompt.trim(),
-          type: "MULTIPLE_CHOICE",
-          options: options.filter((o) => o.text.trim() !== ""),
-          explanation: explanation.trim() || undefined,
+          prompt,
+          type,
           difficulty,
-          points: Number(points) || 1,
-          skillName: skillName.trim() || "General",
+          points,
+          explanation,
+          options: finalOptions,
+          correctAnswer: finalCorrectAnswer,
+        }),
+      });
+
+      if (res.ok) {
+        setShowNewModal(false);
+        setPrompt("");
+        setFormulaAnswer("");
+        setExplanation("");
+        router.refresh();
+      } else {
+        alert("Failed to create question. Please try again.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error creating question");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleGenerateAIQuestions = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGenerating(true);
+    setGenerationMsg(null);
+
+    try {
+      const res = await fetch("/api/questions/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyId: company.id,
+          topic: aiTopic,
+          industry: company.industry || "Financial Services",
+          difficulty: aiDifficulty,
+          count: Number(aiCount),
+          notes: aiNotes,
         }),
       });
 
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to create question");
+      if (res.ok) {
+        setGenerationMsg(`Successfully generated and added ${data.generatedCount || aiCount} questions to ${company.name}!`);
+        setTimeout(() => {
+          setShowAIModal(false);
+          setGenerationMsg(null);
+          router.refresh();
+        }, 1500);
+      } else {
+        setGenerationMsg(data.error || "Failed to generate questions.");
       }
-
-      setShowManualModal(false);
-      setPrompt("");
-      setExplanation("");
-      setOptions([
-        { key: "A", text: "", isCorrect: true },
-        { key: "B", text: "", isCorrect: false },
-        { key: "C", text: "", isCorrect: false },
-        { key: "D", text: "", isCorrect: false },
-      ]);
-      router.refresh();
     } catch (err: any) {
-      setManualError(err.message || "Failed to save question");
+      console.error(err);
+      setGenerationMsg(err.message || "Failed to generate questions with AI.");
     } finally {
-      setManualLoading(false);
+      setGenerating(false);
     }
-  }
+  };
 
-  // Delete Question Handler
-  async function handleDeleteQuestion(qId: string) {
-    if (!confirm("Are you sure you want to remove this question from the company assessment?")) return;
-
+  const handleDeleteQuestion = async (id: string) => {
+    if (!confirm("Are you sure you want to remove this question from this company's bank?")) return;
     try {
-      await fetch(`/api/questions/${qId}`, { method: "DELETE" });
-      router.refresh();
+      const res = await fetch(`/api/questions/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        router.refresh();
+      }
     } catch (err) {
-      console.error("Failed to delete question:", err);
+      console.error(err);
     }
-  }
+  };
 
   return (
     <div className="space-y-8">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200">
-        <div>
-          <Link
-            href="/admin/question-bank"
-            className="text-xs font-semibold text-slate-500 hover:text-[#1d4ed8] inline-flex items-center gap-1 mb-2"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Back to Question Bank Directory</span>
-          </Link>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl md:text-3xl font-black text-[#0f172a] tracking-tight">
-              {company.name} Questions
-            </h1>
-            <span className="px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-[#1d4ed8] text-xs font-bold">
-              {company.questions.length} Questions
-            </span>
+      {/* Header Bar */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+          <div className="flex items-start gap-4">
+            <Link
+              href="/admin/question-bank"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 transition-colors"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                  {company.name} Question Bank
+                </h1>
+                <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700 border border-blue-200">
+                  {company.questions.length} Questions
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-500 font-medium">
+                Scoped specifically to <span className="text-slate-800 font-semibold">{company.name}</span>. All generated and authored questions here are automatically available for this tenant.
+              </p>
+            </div>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Industry Context: <strong className="text-slate-700">{company.industry || "General Enterprise"}</strong>
-          </p>
+
+          {/* Action Modals Trigger */}
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => setShowNewModal(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all cursor-pointer"
+            >
+              <PlusCircle className="h-4 w-4 text-slate-600" />
+              New Question
+            </button>
+
+            <button
+              onClick={() => setShowAIModal(true)}
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:shadow cursor-pointer"
+            >
+              <Sparkles className="h-4 w-4 text-blue-200" />
+              AI Generate Questions
+            </button>
+          </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowManualModal(true)}
-            className="px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-[#0f172a] text-xs font-bold transition-all shadow-2xs flex items-center gap-2 cursor-pointer"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>New Question</span>
-          </button>
+        {/* Filters Strip */}
+        <div className="mt-6 flex flex-col sm:flex-row items-center gap-4 border-t border-slate-100 pt-6">
+          <input
+            type="text"
+            placeholder="Search questions by keyword or formula..."
+            value={searchFilter}
+            onChange={(e) => setSearchFilter(e.target.value)}
+            className="w-full sm:w-80 rounded-xl border border-slate-300 px-3.5 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
 
-          <button
-            onClick={() => setShowAIModal(true)}
-            className="px-4 py-2.5 rounded-xl bg-[#1d4ed8] hover:bg-blue-700 active:scale-[0.99] text-white text-xs font-bold uppercase tracking-wider shadow-sm transition-all flex items-center gap-2 cursor-pointer"
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>AI Generate Questions</span>
-          </button>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="font-semibold text-slate-500">Difficulty:</span>
+            {["ALL", "EASY", "INTERMEDIATE", "HARD", "EXPERT"].map((d) => (
+              <button
+                key={d}
+                onClick={() => setDifficultyFilter(d)}
+                className={`rounded-lg px-2.5 py-1 font-bold transition-colors ${
+                  difficultyFilter === d
+                    ? "bg-slate-900 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Questions List */}
-      {company.questions.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-sm max-w-lg mx-auto">
-          <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-200 text-[#1d4ed8] flex items-center justify-center mx-auto mb-4">
-            <BookOpen className="w-7 h-7" />
+      {/* Question Cards List */}
+      <div className="space-y-4">
+        {filteredQuestions.length === 0 ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+            <BookOpen className="mx-auto h-10 w-10 text-slate-300" />
+            <h3 className="mt-3 text-base font-bold text-slate-700">No questions found</h3>
+            <p className="mt-1 text-xs text-slate-400">
+              Click &quot;AI Generate Questions&quot; to automatically create curriculum-aligned questions for {company.name}.
+            </p>
           </div>
-          <h3 className="text-base font-bold text-[#0f172a] mb-1">No Questions Added Yet</h3>
-          <p className="text-xs text-slate-500 mb-6 max-w-sm mx-auto">
-            You can generate high-quality questions for {company.name} instantly with Gemini AI or author custom questions manually.
-          </p>
-          <div className="flex items-center justify-center gap-3">
-            <button
-              onClick={() => setShowAIModal(true)}
-              className="px-5 py-2.5 rounded-xl bg-[#1d4ed8] hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-wider shadow-sm transition-all flex items-center gap-2 cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Generate with AI</span>
-            </button>
-            <button
-              onClick={() => setShowManualModal(true)}
-              className="px-5 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-[#0f172a] text-xs font-bold transition-all cursor-pointer"
-            >
-              + Create Manually
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {company.questions.map((q, idx) => {
+        ) : (
+          filteredQuestions.map((q, idx) => {
             let parsedOpts: any[] = [];
             if (q.options) {
               try {
@@ -253,285 +284,157 @@ export default function CompanyQuestionBankView({ company }: CompanyQuestionBank
             return (
               <div
                 key={q.id}
-                className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:border-slate-300 transition-all space-y-4"
+                className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow transition-shadow space-y-4"
               >
-                <div className="flex items-center justify-between gap-4 pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-lg bg-blue-50 text-[#1d4ed8] text-xs font-black flex items-center justify-center">
-                      {idx + 1}
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-xs font-black text-blue-600 font-mono">
+                      Q{idx + 1}
                     </span>
-                    <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px] font-semibold">
-                      {q.skill?.name || "General"}
+                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 border border-slate-200">
+                      {q.type}
                     </span>
                     <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        q.difficulty?.toLowerCase() === "hard" || q.difficulty?.toLowerCase() === "expert"
-                          ? "bg-rose-50 text-rose-700 border border-rose-200"
-                          : q.difficulty?.toLowerCase() === "intermediate"
-                          ? "bg-blue-50 text-blue-700 border border-blue-200"
+                      className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                        q.difficulty === "EXPERT"
+                          ? "bg-purple-50 text-purple-700 border border-purple-200"
+                          : q.difficulty === "HARD"
+                          ? "bg-red-50 text-red-700 border border-red-200"
+                          : q.difficulty === "INTERMEDIATE"
+                          ? "bg-amber-50 text-amber-700 border border-amber-200"
                           : "bg-emerald-50 text-emerald-700 border border-emerald-200"
                       }`}
                     >
                       {q.difficulty}
                     </span>
+                    <span className="text-[11px] font-semibold text-slate-400">{q.points} pt{q.points > 1 ? "s" : ""}</span>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold text-slate-500">{q.points} Points</span>
-                    <button
-                      onClick={() => handleDeleteQuestion(q.id)}
-                      title="Delete Question"
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => handleDeleteQuestion(q.id)}
+                    className="text-slate-400 hover:text-red-600 transition-colors p-1 rounded-lg hover:bg-red-50 cursor-pointer"
+                    title="Delete Question"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
 
-                <h3 className="text-sm font-bold text-[#0f172a] leading-relaxed whitespace-pre-wrap">
-                  {q.prompt}
-                </h3>
+                <p className="text-sm font-bold text-slate-900 leading-relaxed">{q.prompt}</p>
 
-                {parsedOpts.length > 0 && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                    {parsedOpts.map((opt: any, optIdx: number) => {
-                      const letter = String.fromCharCode(65 + optIdx);
-                      const isCorrect = opt.isCorrect || q.correctAnswer === opt.key || q.correctAnswer === letter;
-
-                      return (
-                        <div
-                          key={optIdx}
-                          className={`p-2.5 rounded-xl border text-xs flex items-center gap-2.5 ${
-                            isCorrect
-                              ? "bg-emerald-50/70 border-emerald-300 text-emerald-950 font-semibold"
-                              : "bg-slate-50/50 border-slate-200 text-slate-700"
-                          }`}
-                        >
-                          <span
-                            className={`w-5 h-5 rounded-md flex items-center justify-center font-bold text-[10px] shrink-0 ${
-                              isCorrect ? "bg-[#059669] text-white" : "bg-slate-200 text-slate-600"
-                            }`}
-                          >
-                            {letter}
-                          </span>
-                          <span className="flex-1 line-clamp-2">{opt.text}</span>
-                          {isCorrect && <CheckCircle2 className="w-4 h-4 text-[#059669] shrink-0" />}
-                        </div>
-                      );
-                    })}
+                {/* Options Preview */}
+                {Array.isArray(parsedOpts) && parsedOpts.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                    {parsedOpts.map((opt, oIdx) => (
+                      <div
+                        key={oIdx}
+                        className={`p-2.5 rounded-xl text-xs flex items-center gap-2 border ${
+                          opt.isCorrect
+                            ? "bg-emerald-50/70 border-emerald-300 text-emerald-900 font-semibold"
+                            : "bg-slate-50 border-slate-200 text-slate-700"
+                        }`}
+                      >
+                        <span className="font-bold text-[10px] w-4">{String.fromCharCode(65 + oIdx)}.</span>
+                        <span className="flex-1">{opt.text}</span>
+                        {opt.isCorrect && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
+                      </div>
+                    ))}
                   </div>
                 )}
 
+                {/* Formula / Short Answer Correct Answer */}
+                {q.correctAnswer && (
+                  <div className="rounded-xl bg-slate-50 p-3 border border-slate-200/80 text-xs font-mono text-slate-800">
+                    <span className="font-bold text-slate-500 font-sans uppercase text-[10px] block mb-1">
+                      Correct Answer / Formula:
+                    </span>
+                    {q.correctAnswer}
+                  </div>
+                )}
+
+                {/* Explanation */}
                 {q.explanation && (
-                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
-                    <strong className="text-[#0f172a]">Explanation:</strong> {q.explanation}
+                  <div className="rounded-xl bg-blue-50/50 p-3 border border-blue-100 text-xs text-blue-950">
+                    <span className="font-bold text-blue-900 uppercase text-[10px] block mb-0.5">
+                      Explanation & Rationale:
+                    </span>
+                    {q.explanation}
                   </div>
                 )}
               </div>
             );
-          })}
-        </div>
-      )}
+          })
+        )}
+      </div>
 
-      {/* AI GENERATE QUESTIONS MODAL */}
-      {showAIModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full p-6 md:p-8 shadow-xl animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-6">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#1d4ed8] flex items-center justify-center">
-                  <Sparkles className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-[#0f172a]">Generate Questions with Gemini AI</h3>
-                  <p className="text-[11px] text-slate-400">Scoped directly to {company.name}</p>
-                </div>
+      {/* MODAL 1: MANUAL QUESTION CREATION */}
+      {showNewModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 sm:p-8 shadow-xl border border-slate-200 my-8">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-900">Create Custom Question</h3>
+                <p className="text-xs text-slate-500">Add to {company.name}&apos;s Question Bank</p>
               </div>
               <button
-                onClick={() => setShowAIModal(false)}
-                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                onClick={() => setShowNewModal(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleAIGenerate} className="space-y-4">
+            <form onSubmit={handleCreateManualQuestion} className="space-y-4">
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Topic / Capability Area <span className="text-red-500">*</span>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Question Prompt
                 </label>
-                <input
+                <textarea
                   required
-                  type="text"
-                  value={aiTopic}
-                  onChange={(e) => setAiTopic(e.target.value)}
-                  placeholder="e.g. Advanced Excel Dynamic Arrays & XLOOKUP"
-                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs bg-slate-50/50 text-[#0f172a] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1d4ed8] transition-all"
+                  rows={3}
+                  placeholder="Enter the assessment scenario or question prompt..."
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 p-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Difficulty Level <span className="text-red-500">*</span>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Question Type
                   </label>
                   <select
-                    value={aiDifficulty}
-                    onChange={(e) => setAiDifficulty(e.target.value as any)}
-                    className="w-full rounded-xl border border-slate-300 p-2.5 text-xs bg-slate-50/50 text-[#0f172a] font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1d4ed8] transition-all cursor-pointer"
+                    value={type}
+                    onChange={(e) => setType(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-800"
                   >
-                    <option value="easy">Easy / Foundational</option>
-                    <option value="intermediate">Intermediate / Practical</option>
-                    <option value="hard">Hard / Advanced</option>
-                    <option value="expert">Expert / Architect</option>
+                    <option value="MULTIPLE_CHOICE">Multiple Choice (Single)</option>
+                    <option value="MULTIPLE_SELECT">Multiple Select (Checkboxes)</option>
+                    <option value="FORMULA_ENTRY">Formula Entry</option>
+                    <option value="SHORT_ANSWER">Short Answer</option>
+                    <option value="TRUE_FALSE">True / False</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Question Count <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    required
-                    type="number"
-                    min={1}
-                    max={20}
-                    value={aiCount}
-                    onChange={(e) => setAiCount(Number(e.target.value))}
-                    className="w-full rounded-xl border border-slate-300 p-2.5 text-xs bg-slate-50/50 text-[#0f172a] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1d4ed8] transition-all"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Industry / Client Context
-                </label>
-                <input
-                  type="text"
-                  value={aiIndustry}
-                  onChange={(e) => setAiIndustry(e.target.value)}
-                  placeholder="e.g. Commercial Banking & Asset Management"
-                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs bg-slate-50/50 text-[#0f172a] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1d4ed8] transition-all"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Custom Curriculum Notes / Prompt Instructions <span className="text-slate-400 font-normal">(Optional)</span>
-                </label>
-                <textarea
-                  rows={3}
-                  value={aiNotes}
-                  onChange={(e) => setAiNotes(e.target.value)}
-                  placeholder="e.g. Focus on realistic loan amortization schedules, LET and LAMBDA formulas, and error handling."
-                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs bg-slate-50/50 text-[#0f172a] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1d4ed8] transition-all"
-                />
-              </div>
-
-              {aiError && (
-                <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs">
-                  {aiError}
-                </div>
-              )}
-
-              <div className="flex items-center gap-2 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAIModal(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={aiLoading}
-                  className="flex-1 py-2.5 rounded-xl bg-[#1d4ed8] hover:bg-blue-700 text-white text-xs font-bold transition-colors disabled:opacity-60 shadow-xs cursor-pointer flex items-center justify-center gap-2"
-                >
-                  {aiLoading ? (
-                    <>
-                      <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Generating with AI...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>Generate {aiCount} Questions</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MANUAL QUESTION MODAL */}
-      {showManualModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full p-6 md:p-8 shadow-xl animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-6">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#1d4ed8] flex items-center justify-center">
-                  <PlusCircle className="w-4 h-4" />
-                </div>
-                <h3 className="text-sm font-bold text-[#0f172a]">Create Question Manually</h3>
-              </div>
-              <button
-                onClick={() => setShowManualModal(false)}
-                className="text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleManualCreate} className="space-y-4">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Question Prompt <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  required
-                  rows={3}
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="e.g. Which formula correctly calculates the compound annual growth rate (CAGR)?"
-                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs bg-slate-50/50 text-[#0f172a] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1d4ed8] transition-all"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Skill Area
-                  </label>
-                  <input
-                    type="text"
-                    value={skillName}
-                    onChange={(e) => setSkillName(e.target.value)}
-                    placeholder="e.g. Excel"
-                    className="w-full rounded-xl border border-slate-300 p-2.5 text-xs bg-slate-50/50 text-[#0f172a] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1d4ed8] transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Difficulty
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Difficulty Level
                   </label>
                   <select
                     value={difficulty}
                     onChange={(e) => setDifficulty(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 p-2.5 text-xs bg-slate-50/50 text-[#0f172a] font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1d4ed8] transition-all cursor-pointer"
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-800"
                   >
-                    <option value="easy">Easy</option>
-                    <option value="intermediate">Intermediate</option>
-                    <option value="hard">Hard</option>
+                    <option value="EASY">Easy</option>
+                    <option value="INTERMEDIATE">Intermediate</option>
+                    <option value="HARD">Hard</option>
+                    <option value="EXPERT">Expert</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Points
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Points Weight
                   </label>
                   <input
                     type="number"
@@ -539,80 +442,214 @@ export default function CompanyQuestionBankView({ company }: CompanyQuestionBank
                     max={20}
                     value={points}
                     onChange={(e) => setPoints(Number(e.target.value))}
-                    className="w-full rounded-xl border border-slate-300 p-2.5 text-xs bg-slate-50/50 text-[#0f172a] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1d4ed8] transition-all"
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-800"
                   />
                 </div>
               </div>
 
-              {/* Multiple Choice Options */}
-              <div className="space-y-2 pt-2">
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                  Options (Select radio for correct answer) <span className="text-red-500">*</span>
-                </label>
-
-                {options.map((opt, idx) => (
-                  <div key={opt.key} className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name="correctOption"
-                      checked={opt.isCorrect}
-                      onChange={() =>
-                        setOptions((prev) =>
-                          prev.map((o, i) => ({ ...o, isCorrect: i === idx }))
-                        )
-                      }
-                      className="w-4 h-4 text-[#1d4ed8] cursor-pointer"
-                    />
-                    <span className="w-5 text-xs font-bold text-slate-500">{opt.key}</span>
-                    <input
-                      required={idx < 2}
-                      type="text"
-                      value={opt.text}
-                      onChange={(e) =>
-                        setOptions((prev) =>
-                          prev.map((o, i) => (i === idx ? { ...o, text: e.target.value } : o))
-                        )
-                      }
-                      placeholder={`Option ${opt.key} text`}
-                      className="flex-1 rounded-xl border border-slate-300 p-2 text-xs bg-slate-50/50 text-[#0f172a] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1d4ed8] transition-all"
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Explanation / Rationale
-                </label>
-                <textarea
-                  rows={2}
-                  value={explanation}
-                  onChange={(e) => setExplanation(e.target.value)}
-                  placeholder="Explain why this answer is correct..."
-                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs bg-slate-50/50 text-[#0f172a] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1d4ed8] transition-all"
-                />
-              </div>
-
-              {manualError && (
-                <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs">
-                  {manualError}
+              {/* Options Input for Multiple Choice */}
+              {(type === "MULTIPLE_CHOICE" || type === "MULTIPLE_SELECT" || type === "TRUE_FALSE") && (
+                <div className="space-y-2 pt-2">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Answer Options (Select correct option radio/checkbox)
+                  </label>
+                  {options.map((opt, idx) => (
+                    <div key={idx} className="flex items-center gap-3">
+                      <input
+                        type={type === "MULTIPLE_SELECT" ? "checkbox" : "radio"}
+                        name="correctOptionRadio"
+                        checked={opt.isCorrect}
+                        onChange={() => {
+                          if (type === "MULTIPLE_SELECT") {
+                            const newOpts = [...options];
+                            newOpts[idx].isCorrect = !newOpts[idx].isCorrect;
+                            setOptions(newOpts);
+                          } else {
+                            const newOpts = options.map((o, i) => ({
+                              ...o,
+                              isCorrect: i === idx,
+                            }));
+                            setOptions(newOpts);
+                          }
+                        }}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <input
+                        type="text"
+                        placeholder={`Option ${String.fromCharCode(65 + idx)} text`}
+                        value={opt.text}
+                        onChange={(e) => {
+                          const newOpts = [...options];
+                          newOpts[idx].text = e.target.value;
+                          setOptions(newOpts);
+                        }}
+                        className="flex-1 rounded-xl border border-slate-300 px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  ))}
                 </div>
               )}
 
-              <div className="flex items-center gap-2 pt-3">
+              {/* Formula entry */}
+              {(type === "FORMULA_ENTRY" || type === "SHORT_ANSWER") && (
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Correct Formula / Exact Answer
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. =XIRR(B2:B10, A2:A10)"
+                    value={formulaAnswer}
+                    onChange={(e) => setFormulaAnswer(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Explanation & Learning Rationale
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Explain why this answer is correct..."
+                  value={explanation}
+                  onChange={(e) => setExplanation(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 p-3 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setShowManualModal(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors"
+                  onClick={() => setShowNewModal(false)}
+                  className="rounded-xl border border-slate-300 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={manualLoading}
-                  className="flex-1 py-2.5 rounded-xl bg-[#1d4ed8] hover:bg-blue-700 text-white text-xs font-bold transition-colors disabled:opacity-60 shadow-xs cursor-pointer"
+                  disabled={submitting}
+                  className="rounded-xl bg-blue-600 hover:bg-blue-700 px-6 py-2.5 text-xs font-bold text-white shadow-sm transition-all disabled:opacity-60"
                 >
-                  {manualLoading ? "Saving..." : "Save Question"}
+                  {submitting ? "Saving..." : "Save Question to Bank"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: AI QUESTION GENERATOR */}
+      {showAIModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-6 sm:p-8 shadow-xl border border-slate-200 my-8">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-slate-900">AI Question Generation</h3>
+                  <p className="text-xs text-slate-500">Powered by Gemini for {company.name}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAIModal(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleGenerateAIQuestions} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Topic / Skill Domain
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={aiTopic}
+                  onChange={(e) => setAiTopic(e.target.value)}
+                  placeholder="e.g. Dynamic Array Formulas, DCF Valuation, SQL Window Functions"
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Difficulty Level
+                  </label>
+                  <select
+                    value={aiDifficulty}
+                    onChange={(e) => setAiDifficulty(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs font-bold text-slate-800"
+                  >
+                    <option value="EASY">Easy</option>
+                    <option value="INTERMEDIATE">Intermediate</option>
+                    <option value="HARD">Hard</option>
+                    <option value="EXPERT">Expert</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Number of Questions
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={15}
+                    value={aiCount}
+                    onChange={(e) => setAiCount(Number(e.target.value))}
+                    className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs font-bold text-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Custom Curriculum / Company Notes (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={aiNotes}
+                  onChange={(e) => setAiNotes(e.target.value)}
+                  placeholder="Provide specific scenarios, formula constraints, or job role focus..."
+                  className="w-full rounded-xl border border-slate-300 p-3 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {generationMsg && (
+                <div
+                  className={`p-3.5 rounded-xl text-xs font-semibold ${
+                    generationMsg.includes("Successfully")
+                      ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
+                      : "bg-red-50 border border-red-200 text-red-700"
+                  }`}
+                >
+                  {generationMsg}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAIModal(false)}
+                  className="rounded-xl border border-slate-300 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={generating}
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 px-6 py-2.5 text-xs font-bold text-white shadow-sm transition-all disabled:opacity-60"
+                >
+                  <Sparkles className="w-4 h-4 text-blue-200" />
+                  {generating ? "Generating with Gemini..." : `Generate ${aiCount} Questions`}
                 </button>
               </div>
             </form>

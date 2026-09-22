@@ -21,6 +21,7 @@ export async function POST(
                   include: { skill: true, category: true },
                 },
               },
+              orderBy: { order: "asc" },
             },
           },
         },
@@ -28,83 +29,136 @@ export async function POST(
     });
 
     if (!attempt) {
-      return NextResponse.json({ error: "Assessment attempt not found" }, { status: 404 });
+      return NextResponse.json({ error: "Attempt not found" }, { status: 404 });
     }
 
-    const body = await req.json().catch(() => ({}));
-    const answersMap: Record<string, any> = body.answers || {};
+    if (attempt.status === "SUBMITTED" || attempt.status === "TERMINATED") {
+      return NextResponse.json({
+        success: true,
+        alreadySubmitted: true,
+        attemptId: attempt.id,
+        overallPct: attempt.overallPct,
+      });
+    }
 
+    const body = await req.json();
+    const { answers, fullscreenExits = 0, tabSwitches = 0, mouseExits = 0 } = body;
+
+    // Record violations if any
+    const violationData: Array<{ attemptId: string; type: string; detail: string }> = [];
+    if (fullscreenExits > 0) {
+      violationData.push({
+        attemptId: attempt.id,
+        type: "FULLSCREEN_EXIT",
+        detail: `Candidate exited fullscreen mode ${fullscreenExits} time(s).`,
+      });
+    }
+    if (tabSwitches > 0) {
+      violationData.push({
+        attemptId: attempt.id,
+        type: "TAB_SWITCH",
+        detail: `Candidate switched browser tabs ${tabSwitches} time(s).`,
+      });
+    }
+    if (mouseExits > 0) {
+      violationData.push({
+        attemptId: attempt.id,
+        type: "VISIBILITY_HIDDEN",
+        detail: `Cursor departed examination viewport ${mouseExits} time(s).`,
+      });
+    }
+
+    if (violationData.length > 0) {
+      await db.violationLog.createMany({ data: violationData });
+    }
+
+    // Process & Grade Each Question
     let totalPointsAwarded = 0;
-    let maxPointsPossible = 0;
+    let totalPossiblePoints = 0;
     let correctCount = 0;
 
-    const categoryStats: Record<string, { earned: number; possible: number }> = {};
-    const difficultyStats: Record<string, { earned: number; possible: number }> = {};
-    const questionsSummaryForAI: any[] = [];
+    const categoryScores: Record<string, { earned: number; possible: number }> = {};
+    const difficultyScores: Record<string, { earned: number; possible: number }> = {};
+    const questionsSummaryForAI: Array<{
+      prompt: string;
+      skill: string;
+      category?: string;
+      isCorrect: boolean;
+      candidateAnswer: any;
+      explanation?: string;
+    }> = [];
 
-    // Grade each question
     for (const aq of attempt.assessment.questions) {
       const q = aq.question;
-      const points = aq.pointsOverride ?? q.points ?? 1;
-      maxPointsPossible += points;
+      const qPoints = aq.pointsOverride || q.points || 1;
+      totalPossiblePoints += qPoints;
 
-      const candidateResponse = answersMap[q.id];
+      const catName = q.category?.name || q.skill?.name || "General Analytics";
+      const diff = q.difficulty || "INTERMEDIATE";
+
+      if (!categoryScores[catName]) categoryScores[catName] = { earned: 0, possible: 0 };
+      categoryScores[catName].possible += qPoints;
+
+      if (!difficultyScores[diff]) difficultyScores[diff] = { earned: 0, possible: 0 };
+      difficultyScores[diff].possible += qPoints;
+
+      const candidateResponse = answers ? answers[q.id] : undefined;
       let isCorrect = false;
 
-      // Evaluate Correctness
-      if (q.type === "MULTIPLE_CHOICE") {
-        if (q.correctAnswer && String(candidateResponse).trim().toUpperCase() === String(q.correctAnswer).trim().toUpperCase()) {
-          isCorrect = true;
-        } else if (q.options) {
-          const opts = typeof q.options === "string" ? JSON.parse(q.options) : q.options;
-          const correctOpt = opts.find((o: any) => o.isCorrect);
-          if (correctOpt && (candidateResponse === correctOpt.id || candidateResponse === correctOpt.key)) {
-            isCorrect = true;
-          }
+      // Evaluation Logic
+      if (q.type === "MULTIPLE_CHOICE" || q.type === "TRUE_FALSE") {
+        let correctOptText = q.correctAnswer;
+        if (!correctOptText && q.options) {
+          try {
+            const parsed = typeof q.options === "string" ? JSON.parse(q.options) : q.options;
+            const correctOpt = parsed.find((o: any) => o.isCorrect);
+            if (correctOpt) correctOptText = correctOpt.text || correctOpt.id;
+          } catch {}
+        }
+        if (candidateResponse && correctOptText) {
+          isCorrect = String(candidateResponse).trim().toLowerCase() === String(correctOptText).trim().toLowerCase();
         }
       } else if (q.type === "MULTIPLE_SELECT") {
-        if (q.options && Array.isArray(candidateResponse)) {
-          const opts = typeof q.options === "string" ? JSON.parse(q.options) : q.options;
-          const correctIds = opts.filter((o: any) => o.isCorrect).map((o: any) => o.id || o.key).sort();
-          const selectedIds = [...candidateResponse].sort();
-          if (correctIds.length > 0 && JSON.stringify(correctIds) === JSON.stringify(selectedIds)) {
-            isCorrect = true;
-          }
+        let correctIds: string[] = [];
+        if (q.options) {
+          try {
+            const parsed = typeof q.options === "string" ? JSON.parse(q.options) : q.options;
+            correctIds = parsed.filter((o: any) => o.isCorrect).map((o: any) => String(o.text || o.id).toLowerCase());
+          } catch {}
         }
-      } else if (q.type === "TRUE_FALSE") {
-        if (
-          candidateResponse &&
-          q.correctAnswer &&
-          String(candidateResponse).trim().toLowerCase() === String(q.correctAnswer).trim().toLowerCase()
-        ) {
-          isCorrect = true;
+        if (Array.isArray(candidateResponse) && correctIds.length > 0) {
+          const userSelected = candidateResponse.map((v: any) => String(v).trim().toLowerCase());
+          const match =
+            userSelected.length === correctIds.length &&
+            userSelected.every((u: string) => correctIds.includes(u));
+          isCorrect = match;
         }
-      } else if (q.type === "SHORT_ANSWER" || q.type === "FORMULA_ENTRY") {
+      } else if (q.type === "FORMULA_ENTRY" || q.type === "SHORT_ANSWER") {
         if (candidateResponse && q.correctAnswer) {
-          const cleanCandidate = String(candidateResponse).replace(/\s+/g, "").toLowerCase();
-          const cleanExpected = String(q.correctAnswer).replace(/\s+/g, "").toLowerCase();
-          if (cleanCandidate === cleanExpected) {
-            isCorrect = true;
-          }
+          const cleanUser = String(candidateResponse).replace(/\s+/g, "").toLowerCase();
+          const cleanTarget = String(q.correctAnswer).replace(/\s+/g, "").toLowerCase();
+          isCorrect = cleanUser === cleanTarget;
         }
       }
 
-      const pointsAwarded = isCorrect ? points : 0;
-      totalPointsAwarded += pointsAwarded;
-      if (isCorrect) correctCount++;
+      const pointsAwarded = isCorrect ? qPoints : 0;
+      if (isCorrect) {
+        totalPointsAwarded += qPoints;
+        correctCount++;
+        categoryScores[catName].earned += qPoints;
+        difficultyScores[diff].earned += qPoints;
+      }
 
-      // Track Category & Difficulty Stats
-      const catName = q.category?.name || "General Practical";
-      if (!categoryStats[catName]) categoryStats[catName] = { earned: 0, possible: 0 };
-      categoryStats[catName].earned += pointsAwarded;
-      categoryStats[catName].possible += points;
+      questionsSummaryForAI.push({
+        prompt: q.prompt,
+        skill: q.skill?.name || "Analytics",
+        category: q.category?.name,
+        isCorrect,
+        candidateAnswer: candidateResponse,
+        explanation: q.explanation || undefined,
+      });
 
-      const diff = q.difficulty || "intermediate";
-      if (!difficultyStats[diff]) difficultyStats[diff] = { earned: 0, possible: 0 };
-      difficultyStats[diff].earned += pointsAwarded;
-      difficultyStats[diff].possible += points;
-
-      // Save Answer record
+      // Upsert candidate answer record
       await db.answer.upsert({
         where: {
           attemptId_questionId: {
@@ -112,41 +166,33 @@ export async function POST(
             questionId: q.id,
           },
         },
-        update: {
-          response: typeof candidateResponse === "object" ? JSON.stringify(candidateResponse) : String(candidateResponse ?? ""),
-          isCorrect,
-          pointsAwarded,
-          answeredAt: new Date(),
-        },
         create: {
           attemptId: attempt.id,
           questionId: q.id,
-          response: typeof candidateResponse === "object" ? JSON.stringify(candidateResponse) : String(candidateResponse ?? ""),
+          response: typeof candidateResponse === "object" ? candidateResponse : { value: candidateResponse },
           isCorrect,
           pointsAwarded,
-          answeredAt: new Date(),
         },
-      });
-
-      questionsSummaryForAI.push({
-        prompt: q.prompt,
-        skill: q.skill?.name || "Excel",
-        category: catName,
-        isCorrect,
-        candidateAnswer: candidateResponse,
-        explanation: q.explanation || undefined,
+        update: {
+          response: typeof candidateResponse === "object" ? candidateResponse : { value: candidateResponse },
+          isCorrect,
+          pointsAwarded,
+        },
       });
     }
 
-    const overallPct = maxPointsPossible > 0 ? (totalPointsAwarded / maxPointsPossible) * 100 : 0;
+    const overallPct =
+      totalPossiblePoints > 0
+        ? Math.round((totalPointsAwarded / totalPossiblePoints) * 100)
+        : 0;
 
     const categoryScoresPct: Record<string, number> = {};
-    for (const [k, v] of Object.entries(categoryStats)) {
+    for (const [k, v] of Object.entries(categoryScores)) {
       categoryScoresPct[k] = v.possible > 0 ? Math.round((v.earned / v.possible) * 100) : 0;
     }
 
     const difficultyScoresPct: Record<string, number> = {};
-    for (const [k, v] of Object.entries(difficultyStats)) {
+    for (const [k, v] of Object.entries(difficultyScores)) {
       difficultyScoresPct[k] = v.possible > 0 ? Math.round((v.earned / v.possible) * 100) : 0;
     }
 
@@ -181,9 +227,9 @@ export async function POST(
         timeTakenSecs,
         overallScore: totalPointsAwarded,
         overallPct,
-        categoryScores: JSON.stringify(categoryScoresPct),
-        difficultyScores: JSON.stringify(difficultyScoresPct),
-        aiDiagnostic: aiDiagnostic ? JSON.stringify(aiDiagnostic) : undefined,
+        categoryScores: categoryScoresPct as any,
+        difficultyScores: difficultyScoresPct as any,
+        aiDiagnostic: aiDiagnostic as any,
       },
     });
 

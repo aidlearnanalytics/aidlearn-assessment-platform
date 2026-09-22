@@ -11,7 +11,6 @@ import {
   TableRow,
   TableCell,
   WidthType,
-  BorderStyle,
 } from "docx";
 
 export const dynamic = "force-dynamic";
@@ -58,7 +57,10 @@ export async function GET(
   let categoryScores: Record<string, number> = {};
   if (attempt.categoryScores) {
     try {
-      categoryScores = JSON.parse(attempt.categoryScores);
+      categoryScores =
+        typeof attempt.categoryScores === "string"
+          ? JSON.parse(attempt.categoryScores)
+          : (attempt.categoryScores as any);
     } catch {
       categoryScores = {};
     }
@@ -67,7 +69,10 @@ export async function GET(
   let diag: any = null;
   if (attempt.aiDiagnostic) {
     try {
-      diag = JSON.parse(attempt.aiDiagnostic);
+      diag =
+        typeof attempt.aiDiagnostic === "string"
+          ? JSON.parse(attempt.aiDiagnostic)
+          : (attempt.aiDiagnostic as any);
     } catch {
       diag = null;
     }

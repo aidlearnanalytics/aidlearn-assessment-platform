@@ -47,7 +47,10 @@ export default async function ResultsPage({
   let categoryScores: Record<string, number> = {};
   if (attempt.categoryScores) {
     try {
-      categoryScores = JSON.parse(attempt.categoryScores);
+      categoryScores =
+        typeof attempt.categoryScores === "string"
+          ? JSON.parse(attempt.categoryScores)
+          : (attempt.categoryScores as any);
     } catch {
       categoryScores = {};
     }
@@ -57,7 +60,10 @@ export default async function ResultsPage({
   let aiDiagnostic: any = null;
   if (attempt.aiDiagnostic) {
     try {
-      aiDiagnostic = JSON.parse(attempt.aiDiagnostic);
+      aiDiagnostic =
+        typeof attempt.aiDiagnostic === "string"
+          ? JSON.parse(attempt.aiDiagnostic)
+          : (attempt.aiDiagnostic as any);
     } catch {
       aiDiagnostic = null;
     }
@@ -68,218 +74,211 @@ export default async function ResultsPage({
       ? { text: "text-[#059669]", bg: "bg-emerald-50", border: "border-emerald-200", badge: "Proficient" }
       : pct >= 50
       ? { text: "text-[#1d4ed8]", bg: "bg-blue-50", border: "border-blue-200", badge: "Intermediate" }
-      : { text: "text-[#d97706]", bg: "bg-amber-50", border: "border-amber-200", badge: "Upskilling Recommended" };
+      : { text: "text-[#dc2626]", bg: "bg-red-50", border: "border-red-200", badge: "Foundational Upskilling Needed" };
+
+  const violationsCount = attempt.violations.length;
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-[#0f172a] flex flex-col justify-between">
-      {/* Top Header */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-40">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <BrandLogo subtitle={attempt.participant.company.name} />
-          <div className="text-right">
-            <span className="text-xs font-bold text-[#0f172a] block">
-              {attempt.participant.fullName}
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased selection:bg-blue-600 selection:text-white pb-20">
+      {/* Top Navbar */}
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+          <BrandLogo subtitle="Diagnostic Results" />
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-semibold text-slate-500 hidden sm:inline">
+              Candidate: <span className="text-slate-900 font-bold">{attempt.participant.fullName}</span>
             </span>
-            <span className="text-[10px] text-slate-500">
-              {attempt.participant.department || "Corporate Assessment"}
+            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
+              {attempt.participant.company.name}
             </span>
           </div>
         </div>
       </header>
 
-      {/* Main Results Container */}
-      <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-10 space-y-8">
-        {/* Score Overview Card */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm flex flex-col md:flex-row items-center justify-between gap-8">
-          <div className="flex-1 text-center md:text-left space-y-2">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-[#1d4ed8] text-[11px] font-bold">
-              <Award className="w-3.5 h-3.5" />
-              Evaluation Completed
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 pt-10 space-y-8">
+        {/* Score Card Hero */}
+        <div className="rounded-3xl border border-slate-200 bg-white p-8 sm:p-12 shadow-sm text-center relative overflow-hidden">
+          <div className="max-w-2xl mx-auto space-y-4">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700">
+              <Award className="w-4 h-4 text-blue-600" />
+              Official Diagnostic Evaluation
             </div>
-            <h1 className="text-2xl md:text-3xl font-black text-[#0f172a] tracking-tight">
-              Diagnostic Assessment Results
-            </h1>
-            <p className="text-xs text-slate-500 max-w-lg">
-              {attempt.assessment.name} • Submitted on{" "}
-              {new Date(attempt.submittedAt || attempt.createdAt).toLocaleDateString("en-GB", {
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-              })}
-            </p>
-          </div>
 
-          {/* Centered Score Badge & Metric */}
-          <div className="flex items-center gap-6">
-            <div
-              className={`w-32 h-32 rounded-2xl border-2 ${scoreTheme.border} ${scoreTheme.bg} flex flex-col items-center justify-center text-center p-3 shadow-xs`}
-            >
-              <span className={`text-4xl font-black tracking-tight ${scoreTheme.text}`}>
-                {pct}%
-              </span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1">
+            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900">
+              Assessment Completed
+            </h1>
+            <p className="text-sm text-slate-500 font-medium">
+              Thank you, {attempt.participant.fullName}. Your skills evaluation for{" "}
+              <span className="text-slate-800 font-bold">{attempt.participant.company.name}</span> has been scored and analyzed.
+            </p>
+
+            {/* Score Ring / Badge */}
+            <div className="py-6">
+              <div className="inline-flex flex-col items-center justify-center w-40 h-40 rounded-full border-4 border-slate-100 bg-slate-50/50 shadow-inner">
+                <span className={`text-5xl font-black ${scoreTheme.text}`}>{pct}%</span>
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+                  Overall Score
+                </span>
+              </div>
+            </div>
+
+            {/* Score Status Pill */}
+            <div>
+              <span className={`inline-flex px-4 py-1.5 rounded-full text-xs font-extrabold border ${scoreTheme.bg} ${scoreTheme.text} ${scoreTheme.border}`}>
                 {scoreTheme.badge}
               </span>
             </div>
 
-            <div className="space-y-2 text-xs">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-[#059669]" />
-                <span className="text-slate-600">
-                  <strong className="text-[#0f172a]">{correctCount}</strong> of {totalQuestions} Correct
+            {/* Quick Metrics Bar */}
+            <div className="grid grid-cols-3 gap-4 pt-6 border-t border-slate-100 max-w-lg mx-auto text-xs">
+              <div className="flex flex-col items-center">
+                <span className="font-bold text-slate-400 uppercase text-[10px]">Correct Answers</span>
+                <span className="text-base font-black text-slate-900 mt-0.5">
+                  {correctCount} / {totalQuestions}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-[#1d4ed8]" />
-                <span className="text-slate-600">
-                  <strong className="text-[#0f172a]">{Math.round((attempt.timeTakenSecs || 0) / 60)}</strong> Mins Taken
+              <div className="flex flex-col items-center border-x border-slate-200">
+                <span className="font-bold text-slate-400 uppercase text-[10px]">Time Taken</span>
+                <span className="text-base font-black text-slate-900 mt-0.5">
+                  {Math.round((attempt.timeTakenSecs ?? 0) / 60)} mins
                 </span>
               </div>
-              {attempt.violations.length > 0 && (
-                <div className="flex items-center gap-2 text-amber-700">
-                  <ShieldAlert className="w-4 h-4 text-amber-600" />
-                  <span>{attempt.violations.length} Proctoring Notices</span>
-                </div>
-              )}
+              <div className="flex flex-col items-center">
+                <span className="font-bold text-slate-400 uppercase text-[10px]">Integrity Audit</span>
+                <span className={`text-base font-black mt-0.5 ${violationsCount === 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                  {violationsCount === 0 ? "Clean (0)" : `${violationsCount} flags`}
+                </span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Competency Breakdown & AI Diagnostic Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column: Skill Category Scores */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-            <h3 className="text-xs font-bold text-[#0f172a] uppercase tracking-wider pb-2 border-b border-slate-100">
+        {/* Competency Category Breakdown */}
+        {Object.keys(categoryScores).length > 0 && (
+          <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm space-y-6">
+            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
               Competency Breakdown
-            </h3>
+            </h2>
 
-            {Object.keys(categoryScores).length === 0 ? (
-              <p className="text-xs text-slate-400 py-4">No category breakdown available.</p>
-            ) : (
-              <div className="space-y-4 pt-2">
-                {Object.entries(categoryScores).map(([cat, score]) => (
-                  <div key={cat} className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-slate-700">{cat}</span>
-                      <span className="font-bold text-[#0f172a]">{score}%</span>
-                    </div>
-                    <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          score >= 70 ? "bg-[#059669]" : score >= 50 ? "bg-[#1d4ed8]" : "bg-[#d97706]"
-                        }`}
-                        style={{ width: `${Math.max(5, score)}%` }}
-                      />
-                    </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {Object.entries(categoryScores).map(([cat, score]) => (
+                <div key={cat} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="flex justify-between text-xs font-bold">
+                    <span className="text-slate-700">{cat}</span>
+                    <span className="text-slate-900 font-mono">{score}%</span>
                   </div>
-                ))}
-              </div>
-            )}
+                  <div className="h-2 w-full rounded-full bg-slate-200 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${
+                        score >= 70 ? "bg-emerald-500" : score >= 50 ? "bg-blue-600" : "bg-red-500"
+                      }`}
+                      style={{ width: `${score}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
+        )}
 
-          {/* Right Column: AI Diagnostic Report */}
-          <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm space-y-6">
-            <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-              <Sparkles className="w-5 h-5 text-[#1d4ed8]" />
-              <h3 className="text-sm font-bold text-[#0f172a] uppercase tracking-wider">
-                AidLearn AI Diagnostic Insights
-              </h3>
+        {/* AI Diagnostic Report */}
+        {aiDiagnostic && (
+          <div className="rounded-3xl border border-slate-200 bg-white p-8 sm:p-10 shadow-sm space-y-8">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-blue-50 text-blue-600 border border-blue-100">
+                <Sparkles className="w-6 h-6" />
+              </div>
+              <div>
+                <h2 className="text-xl font-black text-slate-900">
+                  {aiDiagnostic.headline || "Diagnostic Performance Feedback"}
+                </h2>
+                <p className="text-xs text-slate-500 font-medium">Personalized AI Capability Diagnostic</p>
+              </div>
             </div>
 
-            {aiDiagnostic ? (
-              <div className="space-y-6">
-                {/* AI Headline */}
-                <div className="p-4 rounded-xl bg-blue-50/60 border border-blue-100">
-                  <h4 className="text-sm font-bold text-[#1d4ed8] mb-1">
-                    {aiDiagnostic.headline || "Diagnostic Summary"}
-                  </h4>
-                  <p className="text-xs text-slate-700 leading-relaxed">
-                    {aiDiagnostic.summary}
-                  </p>
-                </div>
+            <p className="text-sm text-slate-700 leading-relaxed font-medium">
+              {aiDiagnostic.summary}
+            </p>
 
-                {/* Strengths & Weaknesses Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Strengths */}
-                  <div className="p-4 rounded-xl bg-emerald-50/50 border border-emerald-100 space-y-2">
-                    <h5 className="text-xs font-bold text-[#059669] uppercase tracking-wider flex items-center gap-1.5">
-                      <CheckCircle className="w-4 h-4" />
-                      Demonstrated Strengths
-                    </h5>
-                    <ul className="text-xs text-slate-700 space-y-1.5 list-disc list-inside">
-                      {(aiDiagnostic.strengths || []).map((s: string, idx: number) => (
-                        <li key={idx}>{s}</li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Weaknesses */}
-                  <div className="p-4 rounded-xl bg-amber-50/50 border border-amber-100 space-y-2">
-                    <h5 className="text-xs font-bold text-[#d97706] uppercase tracking-wider flex items-center gap-1.5">
-                      <AlertCircle className="w-4 h-4" />
-                      Critical Skill Gaps
-                    </h5>
-                    <ul className="text-xs text-slate-700 space-y-1.5 list-disc list-inside">
-                      {(aiDiagnostic.weaknesses || []).map((w: string, idx: number) => (
-                        <li key={idx}>{w}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-
-                {/* Recommended Curriculum */}
-                {aiDiagnostic.recommendedCurriculum && (
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                    <h5 className="text-xs font-bold text-[#0f172a] uppercase tracking-wider flex items-center gap-1.5">
-                      <BookOpen className="w-4 h-4 text-[#1d4ed8]" />
-                      Recommended Training Path
-                    </h5>
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      {aiDiagnostic.recommendedCurriculum.map((c: string, idx: number) => (
-                        <span
-                          key={idx}
-                          className="px-3 py-1 rounded-lg bg-white border border-slate-300 text-xs font-semibold text-[#0f172a] shadow-xs"
-                        >
-                          {c}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
+            {/* Strengths & Weaknesses Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              {/* Strengths */}
+              <div className="p-6 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  Key Strengths
+                </h3>
+                <ul className="space-y-2 text-xs text-emerald-950 font-medium leading-relaxed">
+                  {aiDiagnostic.strengths?.map((str: string, i: number) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="text-emerald-600 font-bold">•</span>
+                      <span>{str}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
-            ) : (
-              <p className="text-xs text-slate-500 py-4">
-                Diagnostic summary evaluated. Please review with your program coordinator.
-              </p>
+
+              {/* Weaknesses */}
+              <div className="p-6 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-amber-900 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                  Identified Skill Gaps
+                </h3>
+                <ul className="space-y-2 text-xs text-amber-950 font-medium leading-relaxed">
+                  {aiDiagnostic.weaknesses?.map((weak: string, i: number) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="text-amber-600 font-bold">•</span>
+                      <span>{weak}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            {/* Recommended Curriculum */}
+            {aiDiagnostic.recommendedCurriculum && aiDiagnostic.recommendedCurriculum.length > 0 && (
+              <div className="p-6 rounded-2xl bg-blue-50/80 border border-blue-200 space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-blue-900 flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-blue-600" />
+                  Recommended AidLearn Learning Modules
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {aiDiagnostic.recommendedCurriculum.map((curr: string, i: number) => (
+                    <div key={i} className="p-3 bg-white rounded-xl border border-blue-200 text-xs font-bold text-slate-800 flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
+                      {curr}
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
-        </div>
+        )}
 
-        {/* Action / Next Steps CTA Banner */}
-        <div className="bg-[#0f172a] text-white rounded-2xl p-8 shadow-md flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="space-y-1 text-center md:text-left">
-            <h3 className="text-lg font-bold">Bridge Your Capability Gaps with AidLearn Analytics</h3>
-            <p className="text-xs text-slate-300 max-w-xl">
-              Access hands-on masterclasses in Advanced Financial Modeling, SQL Query Optimization, Power BI DAX, and Data Engineering.
+        {/* CTA to Main Platform */}
+        <div className="rounded-3xl bg-gradient-to-r from-blue-600 to-indigo-700 p-8 sm:p-12 text-white shadow-lg text-center space-y-6">
+          <div className="max-w-2xl mx-auto space-y-3">
+            <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
+              Bridge Your Capability Gaps with AidLearn Analytics
+            </h2>
+            <p className="text-xs sm:text-sm text-blue-100 font-medium leading-relaxed">
+              Explore instructor-led masterclasses, live practical projects, and industry certifications tailored for modern workplace analytics.
             </p>
           </div>
 
-          <a
-            href="https://aidlearnanalytics.com/courses"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-6 py-3 rounded-xl bg-[#1d4ed8] hover:bg-blue-600 active:scale-[0.99] text-white text-xs font-bold uppercase tracking-wider shadow-sm transition-all flex items-center gap-2 shrink-0 cursor-pointer"
-          >
-            <span>Explore Corporate Courses</span>
-            <ArrowRight className="w-4 h-4" />
-          </a>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <a
+              href="https://aidlearnanalytics.com/courses"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl bg-white text-blue-700 font-bold text-xs uppercase tracking-wider shadow-sm hover:bg-blue-50 transition-all cursor-pointer"
+            >
+              Explore Course Catalog <ArrowRight className="w-4 h-4" />
+            </a>
+          </div>
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="bg-white border-t border-slate-200 py-6 px-6 text-center text-xs text-slate-500">
-        <p>© {new Date().getFullYear()} AidLearn Analytics. Diagnostic assessment report.</p>
-      </footer>
     </div>
   );
 }
