@@ -63,7 +63,7 @@ export async function GET(
   const totalParticipants = company.participants.length;
   const allAttempts = company.participants
     .map((p) => p.attempts[0])
-    .filter((a): a is NonNullable<typeof a> => !!a && (a.status === "SUBMITTED" || a.status === "EVALUATED"));
+    .filter((a): a is NonNullable<typeof a> => !!a && (a.status === "SUBMITTED" ));
 
   const completedCount = allAttempts.length;
 

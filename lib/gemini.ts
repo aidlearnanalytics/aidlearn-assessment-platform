@@ -150,3 +150,23 @@ Output JSON Format strictly matching:
     };
   }
 }
+
+export async function generateAIDiagnostic(params: any) {
+  return generateCandidateDiagnostic({
+    candidateName: params.candidateName || 'Candidate',
+    companyName: params.assessmentTitle || 'AidLearn Analytics',
+    overallScore: params.overallScore || 0,
+    overallPct: params.overallPct || 0,
+    totalQuestions: params.detailedResponses?.length || 0,
+    correctCount: params.detailedResponses?.filter((r: any) => r.isCorrect)?.length || 0,
+    categoryScores: params.categoryScores || {},
+    questionsSummary: (params.detailedResponses || []).map((r: any) => ({
+      prompt: r.prompt,
+      skill: r.category || 'General',
+      category: r.category,
+      isCorrect: r.isCorrect,
+      candidateAnswer: r.candidateAnswer,
+      explanation: r.explanation
+    }))
+  });
+}

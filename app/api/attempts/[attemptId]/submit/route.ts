@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { generateCandidateDiagnostic } from "@/lib/gemini";
+import { generateAIDiagnostic } from "@/lib/gemini";
+import { ViolationType } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -9,22 +10,22 @@ export async function POST(
   { params }: { params: { attemptId: string } }
 ) {
   try {
+    const { attemptId } = params;
+    const body = await req.json();
+    const { answers, violations, timeTakenSecs } = body;
+
+    // Fetch Attempt & Questions
     const attempt = await db.assessmentAttempt.findUnique({
-      where: { id: params.attemptId },
+      where: { id: attemptId },
       include: {
-        participant: { include: { company: true } },
         assessment: {
           include: {
             questions: {
-              include: {
-                question: {
-                  include: { skill: true, category: true },
-                },
-              },
-              orderBy: { order: "asc" },
+              include: { question: { include: { category: true } } },
             },
           },
         },
+        participant: true,
       },
     });
 
@@ -32,149 +33,100 @@ export async function POST(
       return NextResponse.json({ error: "Attempt not found" }, { status: 404 });
     }
 
-    if (attempt.status === "SUBMITTED" || attempt.status === "TERMINATED") {
-      return NextResponse.json({
-        success: true,
-        alreadySubmitted: true,
-        attemptId: attempt.id,
-        overallPct: attempt.overallPct,
-      });
+    if (attempt.status === "SUBMITTED") {
+      return NextResponse.json(
+        { error: "Assessment already submitted" },
+        { status: 400 }
+      );
     }
 
-    const body = await req.json();
-    const { answers, fullscreenExits = 0, tabSwitches = 0, mouseExits = 0 } = body;
-
-    // Record violations if any
-    const violationData: Array<{ attemptId: string; type: string; detail: string }> = [];
-    if (fullscreenExits > 0) {
-      violationData.push({
-        attemptId: attempt.id,
-        type: "FULLSCREEN_EXIT",
-        detail: `Candidate exited fullscreen mode ${fullscreenExits} time(s).`,
-      });
-    }
-    if (tabSwitches > 0) {
-      violationData.push({
-        attemptId: attempt.id,
-        type: "TAB_SWITCH",
-        detail: `Candidate switched browser tabs ${tabSwitches} time(s).`,
-      });
-    }
-    if (mouseExits > 0) {
-      violationData.push({
-        attemptId: attempt.id,
-        type: "VISIBILITY_HIDDEN",
-        detail: `Cursor departed examination viewport ${mouseExits} time(s).`,
-      });
-    }
+    // Save Violations
+    const violationData = (violations || []).map((v: any) => ({
+      attemptId,
+      type: v.type as ViolationType,
+      detail: v.detail || "",
+    }));
 
     if (violationData.length > 0) {
       await db.violationLog.createMany({ data: violationData });
     }
 
     // Process & Grade Each Question
-    let totalPointsAwarded = 0;
-    let totalPossiblePoints = 0;
-    let correctCount = 0;
+    let totalScore = 0;
+    let maxPossibleScore = 0;
 
     const categoryScores: Record<string, { earned: number; possible: number }> = {};
-    const difficultyScores: Record<string, { earned: number; possible: number }> = {};
-    const questionsSummaryForAI: Array<{
-      prompt: string;
-      skill: string;
-      category?: string;
-      isCorrect: boolean;
-      candidateAnswer: any;
-      explanation?: string;
-    }> = [];
+    const detailedResponses: any[] = [];
 
     for (const aq of attempt.assessment.questions) {
       const q = aq.question;
-      const qPoints = aq.pointsOverride || q.points || 1;
-      totalPossiblePoints += qPoints;
+      const points = aq.pointsOverride || q.points || 1;
+      maxPossibleScore += points;
 
-      const catName = q.category?.name || q.skill?.name || "General Analytics";
-      const diff = q.difficulty || "INTERMEDIATE";
+      const catName = q.category?.name || "General";
+      if (!categoryScores[catName]) {
+        categoryScores[catName] = { earned: 0, possible: 0 };
+      }
+      categoryScores[catName].possible += points;
 
-      if (!categoryScores[catName]) categoryScores[catName] = { earned: 0, possible: 0 };
-      categoryScores[catName].possible += qPoints;
-
-      if (!difficultyScores[diff]) difficultyScores[diff] = { earned: 0, possible: 0 };
-      difficultyScores[diff].possible += qPoints;
-
-      const candidateResponse = answers ? answers[q.id] : undefined;
+      const candidateResponse = answers[q.id];
       let isCorrect = false;
 
-      // Evaluation Logic
       if (q.type === "MULTIPLE_CHOICE" || q.type === "TRUE_FALSE") {
-        let correctOptText = q.correctAnswer;
-        if (!correctOptText && q.options) {
-          try {
-            const parsed = typeof q.options === "string" ? JSON.parse(q.options) : q.options;
-            const correctOpt = parsed.find((o: any) => o.isCorrect);
-            if (correctOpt) correctOptText = correctOpt.text || correctOpt.id;
-          } catch {}
-        }
-        if (candidateResponse && correctOptText) {
-          isCorrect = String(candidateResponse).trim().toLowerCase() === String(correctOptText).trim().toLowerCase();
-        }
+        isCorrect =
+          candidateResponse !== undefined &&
+          String(candidateResponse).trim().toLowerCase() ===
+            String(q.correctAnswer).trim().toLowerCase();
       } else if (q.type === "MULTIPLE_SELECT") {
-        let correctIds: string[] = [];
-        if (q.options) {
-          try {
-            const parsed = typeof q.options === "string" ? JSON.parse(q.options) : q.options;
-            correctIds = parsed.filter((o: any) => o.isCorrect).map((o: any) => String(o.text || o.id).toLowerCase());
-          } catch {}
-        }
-        if (Array.isArray(candidateResponse) && correctIds.length > 0) {
-          const userSelected = candidateResponse.map((v: any) => String(v).trim().toLowerCase());
-          const match =
-            userSelected.length === correctIds.length &&
-            userSelected.every((u: string) => correctIds.includes(u));
-          isCorrect = match;
+        // Compare sorted arrays
+        if (Array.isArray(candidateResponse) && Array.isArray(q.correctAnswer)) {
+          const sortedA = [...candidateResponse].sort();
+          const sortedB = [...q.correctAnswer].sort();
+          isCorrect = JSON.stringify(sortedA) === JSON.stringify(sortedB);
         }
       } else if (q.type === "FORMULA_ENTRY" || q.type === "SHORT_ANSWER") {
-        if (candidateResponse && q.correctAnswer) {
-          const cleanUser = String(candidateResponse).replace(/\s+/g, "").toLowerCase();
-          const cleanTarget = String(q.correctAnswer).replace(/\s+/g, "").toLowerCase();
-          isCorrect = cleanUser === cleanTarget;
-        }
+        isCorrect =
+          candidateResponse !== undefined &&
+          String(candidateResponse)
+            .replace(/\s+/g, "")
+            .toLowerCase() ===
+            String(q.correctAnswer)
+              .replace(/\s+/g, "")
+              .toLowerCase();
       }
 
-      const pointsAwarded = isCorrect ? qPoints : 0;
-      if (isCorrect) {
-        totalPointsAwarded += qPoints;
-        correctCount++;
-        categoryScores[catName].earned += qPoints;
-        difficultyScores[diff].earned += qPoints;
-      }
+      const pointsAwarded = isCorrect ? points : 0;
+      totalScore += pointsAwarded;
+      categoryScores[catName].earned += pointsAwarded;
 
-      questionsSummaryForAI.push({
+      detailedResponses.push({
         prompt: q.prompt,
-        skill: q.skill?.name || "Analytics",
-        category: q.category?.name,
-        isCorrect,
+        type: q.type,
         candidateAnswer: candidateResponse,
-        explanation: q.explanation || undefined,
+        correctAnswer: q.correctAnswer,
+        isCorrect,
+        pointsAwarded,
+        pointsPossible: points,
+        category: catName,
       });
 
-      // Upsert candidate answer record
+      // Save Answer Record
       await db.answer.upsert({
         where: {
           attemptId_questionId: {
-            attemptId: attempt.id,
+            attemptId,
             questionId: q.id,
           },
         },
         create: {
-          attemptId: attempt.id,
+          attemptId,
           questionId: q.id,
-          response: typeof candidateResponse === "object" ? candidateResponse : { value: candidateResponse },
+          response: candidateResponse ?? null,
           isCorrect,
           pointsAwarded,
         },
         update: {
-          response: typeof candidateResponse === "object" ? candidateResponse : { value: candidateResponse },
+          response: candidateResponse ?? null,
           isCorrect,
           pointsAwarded,
         },
@@ -182,67 +134,58 @@ export async function POST(
     }
 
     const overallPct =
-      totalPossiblePoints > 0
-        ? Math.round((totalPointsAwarded / totalPossiblePoints) * 100)
-        : 0;
+      maxPossibleScore > 0 ? (totalScore / maxPossibleScore) * 100 : 0;
 
-    const categoryScoresPct: Record<string, number> = {};
-    for (const [k, v] of Object.entries(categoryScores)) {
-      categoryScoresPct[k] = v.possible > 0 ? Math.round((v.earned / v.possible) * 100) : 0;
+    // Convert category scores to percentages
+    const finalCategoryScores: Record<string, { earned: number; possible: number; pct: number }> = {};
+    for (const [cat, val] of Object.entries(categoryScores)) {
+      finalCategoryScores[cat] = {
+        ...val,
+        pct: val.possible > 0 ? (val.earned / val.possible) * 100 : 0,
+      };
     }
 
-    const difficultyScoresPct: Record<string, number> = {};
-    for (const [k, v] of Object.entries(difficultyScores)) {
-      difficultyScoresPct[k] = v.possible > 0 ? Math.round((v.earned / v.possible) * 100) : 0;
-    }
-
-    // Compute duration taken
-    const now = new Date();
-    const started = attempt.startedAt ? new Date(attempt.startedAt) : now;
-    const timeTakenSecs = Math.max(0, Math.round((now.getTime() - started.getTime()) / 1000));
-
-    // Call Gemini AI for Comprehensive Candidate Diagnostic
+    // Call Gemini AI Diagnostic
     let aiDiagnostic = null;
     try {
-      aiDiagnostic = await generateCandidateDiagnostic({
+      aiDiagnostic = await generateAIDiagnostic({
         candidateName: attempt.participant.fullName,
-        companyName: attempt.participant.company.name,
-        overallScore: totalPointsAwarded,
+        assessmentTitle: attempt.assessment.name,
         overallPct,
-        totalQuestions: attempt.assessment.questions.length,
-        correctCount,
-        categoryScores: categoryScoresPct,
-        questionsSummary: questionsSummaryForAI,
+        categoryScores: finalCategoryScores,
+        detailedResponses,
       });
     } catch (aiErr) {
-      console.error("AI Diagnostic Error during submit:", aiErr);
+      console.error("AI Diagnostic Error:", aiErr);
     }
 
-    // Update Assessment Attempt
-    await db.assessmentAttempt.update({
-      where: { id: attempt.id },
+    // Update Attempt Record
+    const updatedAttempt = await db.assessmentAttempt.update({
+      where: { id: attemptId },
       data: {
         status: "SUBMITTED",
-        submittedAt: now,
-        timeTakenSecs,
-        overallScore: totalPointsAwarded,
+        submittedAt: new Date(),
+        timeTakenSecs: timeTakenSecs || 0,
+        overallScore: totalScore,
         overallPct,
-        categoryScores: categoryScoresPct as any,
-        difficultyScores: difficultyScoresPct as any,
-        aiDiagnostic: aiDiagnostic as any,
+        categoryScores: finalCategoryScores,
+        aiDiagnostic: aiDiagnostic ? (aiDiagnostic as any) : undefined,
       },
     });
 
     return NextResponse.json({
       success: true,
-      attemptId: attempt.id,
+      attemptId: updatedAttempt.id,
       overallPct,
-      totalScore: totalPointsAwarded,
+      overallScore: totalScore,
+      maxPossibleScore,
+      categoryScores: finalCategoryScores,
+      aiDiagnostic,
     });
-  } catch (err: any) {
-    console.error("Assessment Submit Error:", err);
+  } catch (error: any) {
+    console.error("Submit error:", error);
     return NextResponse.json(
-      { error: err.message || "Failed to finalize assessment submission" },
+      { error: "Submission failed", detail: error.message },
       { status: 500 }
     );
   }

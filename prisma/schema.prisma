@@ -7,12 +7,56 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum AdminRole {
+  SUPER_ADMIN
+  COMPANY_ADMIN
+  REVIEWER
+}
+
+enum QuestionStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+enum QuestionSource {
+  HUMAN
+  AI_GENERATED
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  MULTIPLE_SELECT
+  TRUE_FALSE
+  SHORT_ANSWER
+  FORMULA_ENTRY
+}
+
+enum AttemptStatus {
+  REGISTERED
+  IN_PROGRESS
+  SUBMITTED
+  TERMINATED
+  EXPIRED
+}
+
+enum ViolationType {
+  TAB_SWITCH
+  VISIBILITY_HIDDEN
+  FULLSCREEN_EXIT
+  SCREEN_SHARE_STOPPED
+  COPY_PASTE
+  DEVTOOLS_OPEN
+}
+
 model AdminUser {
   id            String    @id @default(cuid())
   email         String    @unique
   passwordHash  String
   name          String
-  role          String    @default("SUPER_ADMIN")
+  role          AdminRole @default(SUPER_ADMIN)
   companyId     String?
   company       Company?  @relation(fields: [companyId], references: [id])
   createdAt     DateTime  @default(now())
@@ -52,35 +96,35 @@ model Category {
 }
 
 model Question {
-  id            String    @id @default(cuid())
+  id            String         @id @default(cuid())
   prompt        String
-  type          String    @default("MULTIPLE_CHOICE")
+  type          QuestionType   @default(MULTIPLE_CHOICE)
   options       Json?
   correctAnswer String?
   explanation   String?
   difficulty    String
   industry      String?
-  points        Int       @default(1)
+  points        Int            @default(1)
 
   companyId     String?
-  company       Company?   @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  company       Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
 
   skillId       String?
-  skill         Skill?     @relation(fields: [skillId], references: [id])
+  skill         Skill?         @relation(fields: [skillId], references: [id])
   categoryId    String?
-  category      Category?  @relation(fields: [categoryId], references: [id])
+  category      Category?      @relation(fields: [categoryId], references: [id])
 
-  source        String    @default("HUMAN")
-  status        String    @default("APPROVED")
+  source        QuestionSource @default(HUMAN)
+  status        QuestionStatus @default(APPROVED)
 
   createdById   String?
-  createdBy     AdminUser? @relation("QuestionCreator", fields: [createdById], references: [id])
+  createdBy     AdminUser?     @relation("QuestionCreator", fields: [createdById], references: [id])
   approvedById  String?
-  approvedBy    AdminUser? @relation("QuestionApprover", fields: [approvedById], references: [id])
+  approvedBy    AdminUser?     @relation("QuestionApprover", fields: [approvedById], references: [id])
   approvedAt    DateTime?
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   assessmentQuestions AssessmentQuestion[]
   answers             Answer[]
@@ -153,7 +197,7 @@ model AssessmentAttempt {
   participantId    String
   participant      Participant   @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
-  status           String        @default("REGISTERED")
+  status           AttemptStatus @default(REGISTERED)
   startedAt        DateTime?
   submittedAt      DateTime?
   timeTakenSecs    Int?
@@ -188,7 +232,7 @@ model ViolationLog {
   id         String            @id @default(cuid())
   attemptId  String
   attempt    AssessmentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  type       String
+  type       ViolationType
   detail     String?
   occurredAt DateTime          @default(now())
 }
