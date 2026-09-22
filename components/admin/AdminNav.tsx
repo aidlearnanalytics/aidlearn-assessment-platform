@@ -14,7 +14,8 @@ import {
 
 export default function AdminNav() {
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const sessionContext = useSession();
+  const session = sessionContext?.data;
 
   const navItems = [
     { label: "Dashboard", href: "/admin", icon: LayoutDashboard, exact: true },
@@ -67,6 +68,7 @@ export default function AdminNav() {
           </div>
 
           <button
+            type="button"
             onClick={() => signOut({ callbackUrl: "/login" })}
             title="Sign Out"
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 text-slate-600 text-xs font-semibold transition-all cursor-pointer"

@@ -2,11 +2,9 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import { Lock, Mail, ArrowRight } from "lucide-react";
 
 export function LoginForm() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -24,15 +22,14 @@ export function LoginForm() {
         redirect: false,
       });
 
-      setLoading(false);
-
       if (res?.error) {
+        setLoading(false);
         setError("Invalid email or password. Please verify credentials.");
         return;
       }
 
-      router.push("/admin");
-      router.refresh();
+      // Hard redirect to /admin to ensure fresh full page load & cookie propagation
+      window.location.href = "/admin";
     } catch {
       setLoading(false);
       setError("An unexpected error occurred during sign in. Please try again.");
