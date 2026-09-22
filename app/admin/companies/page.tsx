@@ -11,8 +11,7 @@ export default async function AdminCompaniesPage() {
         select: {
           participants: true,
           assessments: true,
-          questions: true,
-        },
+          },
       },
     },
   });

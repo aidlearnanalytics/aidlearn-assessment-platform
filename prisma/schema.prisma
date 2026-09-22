@@ -80,7 +80,6 @@ model Company {
   admins        AdminUser[]
   assessments   Assessment[]
   participants  Participant[]
-  questions     Question[]
 }
 
 model Skill {
@@ -105,9 +104,6 @@ model Question {
   difficulty    String
   industry      String?
   points        Int            @default(1)
-
-  companyId     String?
-  company       Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
 
   skillId       String?
   skill         Skill?         @relation(fields: [skillId], references: [id])

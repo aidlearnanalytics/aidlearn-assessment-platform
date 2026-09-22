@@ -1,83 +1,69 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireRole } from "@/lib/auth";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { findOrCreateSkill, findOrCreateCategory } from "@/lib/taxonomy";
+import { QuestionType, QuestionStatus, QuestionSource } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
-const ADMIN_ROLES = ["SUPER_ADMIN", "COMPANY_ADMIN", "REVIEWER"];
+export async function GET(req: NextRequest) {
+  try {
+    const questions = await db.question.findMany({
+      include: {
+        skill: true,
+        category: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return NextResponse.json(questions);
+  } catch (error) {
+    return NextResponse.json({ error: "Failed to fetch questions" }, { status: 500 });
+  }
+}
 
 export async function POST(req: NextRequest) {
-  let session;
   try {
-    session = await requireRole(ADMIN_ROLES);
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  try {
-    const body = await req.json();
-    const { companyId, prompt, type, options, explanation, difficulty, points, skillName } = body;
-
-    if (!prompt || !companyId) {
-      return NextResponse.json({ error: "Prompt and Company ID are required." }, { status: 400 });
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const skill = await findOrCreateSkill(skillName || "General");
+    const body = await req.json();
+    const { prompt, type = "MULTIPLE_CHOICE", options, correctAnswer, explanation, difficulty = "intermediate", points = 1, skillId, categoryId, assessmentId } = body;
 
-    // Format options
-    let formattedOptions = undefined;
-    let correctAnswer = undefined;
-    if (options && Array.isArray(options)) {
-      formattedOptions = JSON.stringify(options);
-      const correct = options.find((o: any) => o.isCorrect);
-      if (correct) correctAnswer = correct.key || correct.id;
+    if (!prompt) {
+      return NextResponse.json({ error: "Prompt is required." }, { status: 400 });
     }
 
     const question = await db.question.create({
       data: {
-        companyId,
         prompt,
-        type: type || "MULTIPLE_CHOICE",
-        options: formattedOptions,
-        correctAnswer,
-        explanation,
-        difficulty: difficulty || "intermediate",
+        type: type as QuestionType,
+        options: options || undefined,
+        correctAnswer: correctAnswer || undefined,
+        explanation: explanation || undefined,
+        difficulty,
         points: Number(points) || 1,
-        skillId: skill.id,
-        source: "HUMAN",
-        status: "APPROVED",
-        createdById: (session.user as any).id,
-        approvedById: (session.user as any).id,
-        approvedAt: new Date(),
+        skillId: skillId || undefined,
+        categoryId: categoryId || undefined,
+        source: "HUMAN" as QuestionSource,
+        status: "APPROVED" as QuestionStatus,
+        createdById: (session.user as any)?.id || undefined,
       },
     });
 
-    // Link to company's assessment
-    const assessment = await db.assessment.findFirst({
-      where: { companyId },
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (assessment) {
-      const highestOrder = await db.assessmentQuestion.aggregate({
-        where: { assessmentId: assessment.id },
-        _max: { order: true },
-      });
-      const nextOrder = (highestOrder._max.order ?? 0) + 1;
-
+    if (assessmentId) {
       await db.assessmentQuestion.create({
         data: {
-          assessmentId: assessment.id,
+          assessmentId,
           questionId: question.id,
-          order: nextOrder,
         },
       });
     }
 
-    return NextResponse.json({ question }, { status: 201 });
-  } catch (err: any) {
-    console.error("Create Question Error:", err);
-    return NextResponse.json({ error: err.message || "Failed to create question" }, { status: 500 });
+    return NextResponse.json(question, { status: 201 });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || "Failed to create question" }, { status: 500 });
   }
 }

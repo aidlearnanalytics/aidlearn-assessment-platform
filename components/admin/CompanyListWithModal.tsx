@@ -22,7 +22,7 @@ interface CompanyItem {
   _count: {
     participants: number;
     assessments: number;
-    questions: number;
+    questions?: number;
   };
 }
 

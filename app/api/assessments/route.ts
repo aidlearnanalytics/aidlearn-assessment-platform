@@ -15,7 +15,7 @@ export async function GET() {
 
   const assessments = await db.assessment.findMany({
     orderBy: { createdAt: "desc" },
-    include: { company: true, _count: { select: { questions: true, attempts: true } } },
+    include: { company: true, _count: { select: { attempts: true } } },
   });
 
   return NextResponse.json({ assessments });

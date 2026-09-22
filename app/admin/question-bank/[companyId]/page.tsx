@@ -11,20 +11,24 @@ export default async function CompanyQuestionBankPage({
 }) {
   const company = await db.company.findUnique({
     where: { id: params.companyId },
-    include: {
-      questions: {
-        include: {
-          skill: true,
-          category: true,
-        },
-        orderBy: { createdAt: "desc" },
-      },
-    },
   });
 
   if (!company) {
     notFound();
   }
 
-  return <CompanyQuestionBankView company={company} />;
+  const questions = await db.question.findMany({
+    include: {
+      skill: true,
+      category: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const companyWithQuestions = {
+    ...company,
+    questions,
+  };
+
+  return <CompanyQuestionBankView company={companyWithQuestions as any} />;
 }

@@ -25,8 +25,8 @@ const DEFAULT_TOGGLES = {
 
 export default function AssessmentForm({ companies }: { companies: Company[] }) {
   const router = useRouter();
-  const [name, setName] = useState("");
   const [companyId, setCompanyId] = useState(companies[0]?.id ?? "");
+  const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [numQuestions, setNumQuestions] = useState(20);
@@ -44,8 +44,8 @@ export default function AssessmentForm({ companies }: { companies: Company[] }) 
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name,
         companyId,
+        name,
         description: description || undefined,
         durationMinutes,
         numQuestions,
@@ -57,7 +57,7 @@ export default function AssessmentForm({ companies }: { companies: Company[] }) 
     setSaving(false);
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setError(typeof body.error === "string" ? body.error : "Couldn't create this assessment.");
+      setError(typeof body.error === "string" ? body.error : "Could not create this assessment.");
       return;
     }
     const { assessment } = await res.json();
@@ -67,9 +67,9 @@ export default function AssessmentForm({ companies }: { companies: Company[] }) 
 
   if (companies.length === 0) {
     return (
-      <p className="text-ink/60">
+      <p className="text-slate-600 text-sm">
         You need a company before you can build an assessment.{" "}
-        <a href="/admin/companies/new" className="text-accent underline">
+        <a href="/admin/companies" className="text-[#1d4ed8] underline">
           Create one first
         </a>
         .
@@ -78,24 +78,24 @@ export default function AssessmentForm({ companies }: { companies: Company[] }) 
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex max-w-2xl flex-col gap-5">
+    <form onSubmit={handleSubmit} className="flex max-w-2xl flex-col gap-5 bg-white p-6 rounded-2xl border border-slate-200">
       <div>
-        <label className="mb-1 block text-sm font-medium">Assessment name</label>
+        <label className="mb-1 block text-xs font-bold text-slate-700 uppercase">Assessment Name</label>
         <input
           required
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Indie Finance Excel & Financial Data Skills Assessment"
-          className="w-full rounded border border-ink/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          placeholder="Financial Modeling & Analytics Diagnostic Evaluation"
+          className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]"
         />
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium">Company</label>
+        <label className="mb-1 block text-xs font-bold text-slate-700 uppercase">Target Organization</label>
         <select
           value={companyId}
           onChange={(e) => setCompanyId(e.target.value)}
-          className="w-full rounded border border-ink/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]"
         >
           {companies.map((c) => (
             <option key={c.id} value={c.id}>
@@ -106,61 +106,62 @@ export default function AssessmentForm({ companies }: { companies: Company[] }) 
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium">Description</label>
+        <label className="mb-1 block text-xs font-bold text-slate-700 uppercase">Description</label>
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={2}
-          className="w-full rounded border border-ink/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+          placeholder="Diagnostic evaluation assessing Excel, SQL, and business analytics skills."
+          className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]"
         />
       </div>
 
       <div className="grid grid-cols-3 gap-4">
         <div>
-          <label className="mb-1 block text-sm font-medium">Duration (min)</label>
+          <label className="mb-1 block text-xs font-bold text-slate-700 uppercase">Duration (mins)</label>
           <input
             type="number"
             min={5}
             max={480}
             value={durationMinutes}
             onChange={(e) => setDurationMinutes(Number(e.target.value))}
-            className="w-full rounded border border-ink/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]"
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium"># Questions</label>
+          <label className="mb-1 block text-xs font-bold text-slate-700 uppercase"># Questions</label>
           <input
             type="number"
             min={1}
             max={200}
             value={numQuestions}
             onChange={(e) => setNumQuestions(Number(e.target.value))}
-            className="w-full rounded border border-ink/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]"
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium">Passing score %</label>
+          <label className="mb-1 block text-xs font-bold text-slate-700 uppercase">Passing Score %</label>
           <input
             type="number"
             min={0}
             max={100}
             value={passingScorePct}
             onChange={(e) => setPassingScorePct(Number(e.target.value))}
-            className="w-full rounded border border-ink/20 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]"
           />
         </div>
       </div>
 
       <div>
-        <label className="mb-2 block text-sm font-medium">Randomization &amp; monitoring</label>
-        <div className="grid grid-cols-2 gap-2">
+        <label className="mb-2 block text-xs font-bold text-slate-700 uppercase">Proctoring & Randomization</label>
+        <div className="grid grid-cols-2 gap-2.5 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
           {TOGGLES.map((t) => (
-            <label key={t.key} className="flex items-center gap-2 text-sm">
+            <label key={t.key} className="flex items-center gap-2 text-xs font-medium text-slate-700">
               <input
                 type="checkbox"
                 checked={toggles[t.key]}
                 onChange={(e) => setToggles((prev) => ({ ...prev, [t.key]: e.target.checked }))}
-                className="accent-accent"
+                className="rounded text-[#1d4ed8]"
               />
               {t.label}
             </label>
@@ -168,20 +169,20 @@ export default function AssessmentForm({ companies }: { companies: Company[] }) 
         </div>
       </div>
 
-      {error && <p className="text-sm text-warn">{error}</p>}
+      {error && <p className="text-xs font-bold text-rose-600">{error}</p>}
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 pt-2">
         <button
           type="submit"
           disabled={saving}
-          className="rounded bg-accent px-4 py-2 text-sm text-paper disabled:opacity-60"
+          className="rounded-xl bg-[#1d4ed8] hover:bg-blue-700 px-5 py-2.5 text-xs font-bold text-white disabled:opacity-60 transition-all cursor-pointer"
         >
-          {saving ? "Saving…" : "Create assessment"}
+          {saving ? "Saving..." : "Create Assessment"}
         </button>
         <button
           type="button"
           onClick={() => router.push("/admin/assessments")}
-          className="rounded border border-ink/20 px-4 py-2 text-sm"
+          className="rounded-xl border border-slate-300 px-5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all cursor-pointer"
         >
           Cancel
         </button>

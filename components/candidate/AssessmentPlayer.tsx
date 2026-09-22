@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { BrandLogo } from "@/components/common/BrandLogo";
 import {
   Clock,
   AlertTriangle,
@@ -159,7 +158,6 @@ export default function AssessmentPlayer({
     };
 
     const preventKeys = (e: KeyboardEvent) => {
-      // Prevent Copy / Paste / Developer Tools
       if ((e.ctrlKey || e.metaKey) && ["c", "v", "x", "a", "u", "s"].includes(e.key.toLowerCase())) {
         e.preventDefault();
       }
@@ -231,8 +229,9 @@ export default function AssessmentPlayer({
     }
   };
 
-  // Option Selection Handler - Fixed for Radio vs Checkbox vs Text
+  // Option Selection Handler - Strict radio vs checkbox behavior
   const handleOptionSelect = (optionIdentifier: string) => {
+    if (!currentQ) return;
     if (currentQ.type === "MULTIPLE_SELECT") {
       const currentList: string[] = Array.isArray(answers[currentQ.id]) ? answers[currentQ.id] : [];
       const updated = currentList.includes(optionIdentifier)
@@ -246,6 +245,7 @@ export default function AssessmentPlayer({
   };
 
   const handleTextAnswer = (text: string) => {
+    if (!currentQ) return;
     setAnswers((prev) => ({ ...prev, [currentQ.id]: text }));
   };
 
@@ -260,34 +260,49 @@ export default function AssessmentPlayer({
     (k) => answers[k] !== undefined && answers[k] !== "" && (Array.isArray(answers[k]) ? answers[k].length > 0 : true)
   ).length;
 
+  if (!currentQ) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-6">
+        <div className="text-center bg-white p-8 rounded-2xl border border-slate-200">
+          <p className="text-sm font-bold text-slate-700">Loading assessment questions...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-[#0f172a] flex flex-col select-none">
+    <div className="min-h-screen bg-[#F8FAFC] text-[#0f172a] flex flex-col select-none">
       {/* Top Proctored Header */}
       <header className="bg-white border-b border-slate-200 px-4 md:px-8 py-3.5 sticky top-0 z-40 shadow-xs">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-          {/* Logo & Company Name */}
+          {/* Logo & Assessment Details */}
           <div className="flex items-center gap-3">
-            <BrandLogo subtitle={companyName} href="" />
-            <div className="hidden sm:block h-6 w-px bg-slate-200" />
-            <div className="hidden sm:flex flex-col">
-              <span className="text-[11px] font-bold text-[#0f172a] truncate max-w-[200px] md:max-w-xs">
+            <div className="h-9 w-9 rounded-xl bg-[#1d4ed8] p-1.5 shadow-xs flex items-center justify-center">
+              <img
+                src="/brand/aidlearn-symbol-transparent.png"
+                alt="AidLearn Logo"
+                className="w-full h-full object-contain"
+              />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xs font-bold text-[#0f172a] leading-tight line-clamp-1">
                 {assessmentName}
               </span>
-              <span className="text-[10px] font-medium text-slate-500">
-                Candidate: <span className="text-slate-800 font-semibold">{candidateName}</span>
-                {department ? ` • ${department}` : ""}
+              <span className="text-[10px] text-slate-500 font-medium">
+                Candidate: <span className="font-semibold text-slate-700">{candidateName}</span>
+                {department ? ` · ${department}` : ""}
               </span>
             </div>
           </div>
 
-          {/* Center: Timer & Violations */}
+          {/* Right Status Controls: Timer, Violations, Fullscreen */}
           <div className="flex items-center gap-3">
-            {/* Countdown Timer */}
+            {/* Timer Badge */}
             <div
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-mono text-xs font-bold transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-colors ${
                 timeLeft < 300
-                  ? "bg-rose-50 border-rose-200 text-rose-700 animate-pulse"
-                  : "bg-blue-50 border-blue-200 text-[#1d4ed8]"
+                  ? "bg-rose-50 border-rose-200 text-rose-600 animate-pulse"
+                  : "bg-blue-50/70 border-blue-200 text-[#1d4ed8]"
               }`}
             >
               <Clock className="w-3.5 h-3.5" />
@@ -296,96 +311,92 @@ export default function AssessmentPlayer({
 
             {/* Violation Counter Badge */}
             {violations > 0 && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                <span>{violations} Warnings</span>
+              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>
+                  {violations}/{maxViolations} Flags
+                </span>
               </div>
             )}
-          </div>
 
-          {/* Right Controls */}
-          <div className="flex items-center gap-2">
+            {/* Fullscreen Toggle */}
             <button
+              type="button"
               onClick={toggleFullscreen}
               title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-              className="p-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors cursor-pointer"
+              className="p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 transition-colors cursor-pointer"
             >
               {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-            </button>
-
-            <button
-              onClick={() => setShowSubmitModal(true)}
-              disabled={submitting}
-              className="px-4 py-2 rounded-xl bg-[#1d4ed8] hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-wider shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
-            >
-              <Send className="w-3.5 h-3.5" />
-              <span>Submit</span>
             </button>
           </div>
         </div>
       </header>
 
-      {/* Warning Alert Banner */}
+      {/* Warning Notification Toast */}
       {warningMessage && (
-        <div className="bg-amber-500 text-white px-4 py-2 text-xs font-semibold flex items-center justify-between shadow-xs">
-          <div className="flex items-center gap-2 max-w-6xl mx-auto w-full">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span>{warningMessage}</span>
-          </div>
+        <div className="bg-amber-500 text-white px-4 py-2.5 text-xs font-bold text-center flex items-center justify-center gap-2 shadow-sm animate-in fade-in slide-in-from-top-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>{warningMessage}</span>
           <button
+            type="button"
             onClick={() => setWarningMessage(null)}
-            className="text-white hover:opacity-80 text-sm font-bold ml-4 cursor-pointer"
+            className="ml-4 underline text-[11px] opacity-90 hover:opacity-100 cursor-pointer"
           >
-            &times;
+            Dismiss
           </button>
         </div>
       )}
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-5xl mx-auto w-full px-4 md:px-6 py-8 flex flex-col justify-between">
-        {/* Question Header & Meta */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
-          <div className="flex items-center justify-between gap-4 pb-4 mb-6 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-[#1d4ed8] text-xs font-bold">
+      {/* Main Question Interface */}
+      <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-8 flex flex-col justify-between">
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-10 shadow-sm">
+          {/* Question Meta Header */}
+          <div className="flex items-center justify-between gap-4 pb-5 mb-6 border-b border-slate-100">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-[#1d4ed8] text-xs font-extrabold">
                 Question {currentIndex + 1} of {questions.length}
               </span>
               {currentQ.skillName && (
-                <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium">
+                <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 text-[11px] font-bold">
                   {currentQ.skillName}
                 </span>
               )}
-              {currentQ.difficulty && (
-                <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 text-[11px] uppercase font-semibold">
-                  {currentQ.difficulty}
+              {currentQ.categoryName && (
+                <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 text-[11px] font-bold">
+                  {currentQ.categoryName}
                 </span>
               )}
             </div>
 
             <span className="text-xs font-bold text-slate-500">
-              {currentQ.points} {currentQ.points === 1 ? "Point" : "Points"}
+              {currentQ.points || 1} {currentQ.points === 1 ? "point" : "points"}
             </span>
           </div>
 
-          {/* Question Prompt Text */}
-          <h2 className="text-base md:text-lg font-bold text-[#0f172a] leading-relaxed mb-6 whitespace-pre-wrap">
-            {currentQ.prompt}
-          </h2>
+          {/* Question Prompt */}
+          <div className="mb-8">
+            <h2 className="text-base sm:text-lg font-bold text-[#0f172a] leading-relaxed">
+              {currentQ.prompt}
+            </h2>
+          </div>
 
-          {/* Options / Answer Input Section */}
+          {/* Options Display */}
           {currentQ.type === "MULTIPLE_CHOICE" || currentQ.type === "TRUE_FALSE" ? (
             <div className="flex flex-col gap-3">
               {parsedOptions.map((opt, idx) => {
-                const optIdentifier = opt.key || opt.id || String.fromCharCode(65 + idx);
-                const isSelected = answers[currentQ.id] === optIdentifier;
-                const letter = String.fromCharCode(65 + idx);
+                const optIdentifier = String(opt.id || opt.key || String.fromCharCode(65 + idx));
+                const letter = String(opt.key || opt.id || String.fromCharCode(65 + idx));
+                const isSelected =
+                  answers[currentQ.id] !== undefined &&
+                  answers[currentQ.id] !== null &&
+                  String(answers[currentQ.id]) === optIdentifier;
 
                 return (
                   <button
                     key={opt.id || idx}
                     type="button"
                     onClick={() => handleOptionSelect(optIdentifier)}
-                    className={`w-full text-left p-4 rounded-xl border text-xs md:text-sm font-medium transition-all flex items-center gap-3.5 cursor-pointer ${
+                    className={`w-full text-left p-4 rounded-xl border text-xs sm:text-sm font-medium transition-all flex items-center gap-3.5 cursor-pointer ${
                       isSelected
                         ? "bg-blue-50/70 border-[#1d4ed8] text-[#0f172a] shadow-xs"
                         : "bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50/60"
@@ -411,7 +422,7 @@ export default function AssessmentPlayer({
                 Select all options that apply:
               </p>
               {parsedOptions.map((opt, idx) => {
-                const optIdentifier = opt.key || opt.id || String.fromCharCode(65 + idx);
+                const optIdentifier = String(opt.id || opt.key || String.fromCharCode(65 + idx));
                 const selectedList: string[] = Array.isArray(answers[currentQ.id]) ? answers[currentQ.id] : [];
                 const isSelected = selectedList.includes(optIdentifier);
 
@@ -420,7 +431,7 @@ export default function AssessmentPlayer({
                     key={opt.id || idx}
                     type="button"
                     onClick={() => handleOptionSelect(optIdentifier)}
-                    className={`w-full text-left p-4 rounded-xl border text-xs md:text-sm font-medium transition-all flex items-center gap-3.5 cursor-pointer ${
+                    className={`w-full text-left p-4 rounded-xl border text-xs sm:text-sm font-medium transition-all flex items-center gap-3.5 cursor-pointer ${
                       isSelected
                         ? "bg-blue-50/70 border-[#1d4ed8] text-[#0f172a] shadow-xs"
                         : "bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50/60"
@@ -448,7 +459,7 @@ export default function AssessmentPlayer({
                 value={answers[currentQ.id] || ""}
                 onChange={(e) => handleTextAnswer(e.target.value)}
                 placeholder="e.g. =XLOOKUP(A2, Data!A:A, Data!B:B, 0)"
-                className="w-full font-mono text-xs md:text-sm rounded-xl border border-slate-300 p-3.5 bg-slate-50 text-[#0f172a] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1d4ed8] focus:border-transparent transition-all"
+                className="w-full font-mono text-xs sm:text-sm rounded-xl border border-slate-300 p-3.5 bg-slate-50 text-[#0f172a] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1d4ed8] focus:border-transparent transition-all"
               />
             </div>
           )}
@@ -478,6 +489,7 @@ export default function AssessmentPlayer({
               return (
                 <button
                   key={q.id}
+                  type="button"
                   onClick={() => setCurrentIndex(idx)}
                   className={`w-7 h-7 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center ${
                     isCurrent

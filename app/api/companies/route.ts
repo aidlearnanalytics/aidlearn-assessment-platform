@@ -13,7 +13,7 @@ export async function GET() {
       orderBy: { name: "asc" },
       include: {
         _count: {
-          select: { participants: true, questions: true, assessments: true },
+          select: { participants: true, assessments: true },
         },
       },
     });
