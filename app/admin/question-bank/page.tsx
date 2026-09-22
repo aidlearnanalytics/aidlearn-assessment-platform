@@ -1,122 +1,112 @@
 import { db } from "@/lib/db";
 import Link from "next/link";
+import { BookOpen, Building2, Sparkles, ArrowRight, PlusCircle } from "lucide-react";
 
-const STATUS_STYLES: Record<string, string> = {
-  DRAFT: "bg-ink/10 text-ink/60",
-  PENDING_APPROVAL: "bg-accentSoft text-accent",
-  APPROVED: "bg-accentSoft text-accent",
-  REJECTED: "bg-red-100 text-red-700",
-  ARCHIVED: "bg-ink/10 text-ink/40",
-};
+export const dynamic = "force-dynamic";
 
-export default async function QuestionBankPage({
-  searchParams,
-}: {
-  searchParams?: { status?: string; skillId?: string; difficulty?: string };
-}) {
-  const { status, skillId, difficulty } = searchParams ?? {};
-
-  const [questions, skills] = await Promise.all([
-    db.question.findMany({
-      where: {
-        status: status ? (status as any) : undefined,
-        skillId: skillId || undefined,
-        difficulty: difficulty || undefined,
+export default async function QuestionBankDirectoryPage() {
+  const companies = await db.company.findMany({
+    orderBy: { name: "asc" },
+    include: {
+      _count: {
+        select: { questions: true },
       },
-      orderBy: { createdAt: "desc" },
-      include: { skill: true, category: true },
-      take: 50,
-    }),
-    db.skill.findMany({ orderBy: { name: "asc" } }),
-  ]);
-
-  function filterHref(next: Partial<{ status: string; skillId: string; difficulty: string }>) {
-    const merged = { status, skillId, difficulty, ...next };
-    const qs = new URLSearchParams(
-      Object.entries(merged).filter(([, v]) => v) as [string, string][]
-    ).toString();
-    return `/admin/question-bank${qs ? `?${qs}` : ""}`;
-  }
+      assessments: {
+        select: {
+          id: true,
+          name: true,
+          durationMinutes: true,
+          passingScorePct: true,
+        },
+      },
+    },
+  });
 
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Question Bank</h1>
-        <div className="flex gap-2">
-          <Link href="/admin/question-bank/new" className="rounded bg-accent px-4 py-2 text-sm text-paper">
-            New question
-          </Link>
-          <Link
-            href="/admin/question-bank/generate"
-            className="rounded border border-accent px-4 py-2 text-sm text-accent"
-          >
-            AI generate
-          </Link>
+    <div className="space-y-6">
+      {/* Top Action Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-black text-[#0f172a] tracking-tight">
+            Question Bank Management
+          </h1>
+          <p className="text-xs text-slate-500 mt-1">
+            Select a company below to manage its custom evaluation questions and generate AI curricula.
+          </p>
         </div>
+
+        <Link
+          href="/admin/companies"
+          className="px-4 py-2.5 rounded-xl bg-[#1d4ed8] hover:bg-blue-700 active:scale-[0.99] text-white text-xs font-bold uppercase tracking-wider shadow-sm transition-all flex items-center gap-2 cursor-pointer self-start sm:self-auto"
+        >
+          <PlusCircle className="w-4 h-4" />
+          <span>New Company</span>
+        </Link>
       </div>
 
-      <div className="mb-4 flex flex-col gap-3">
-        <div className="flex flex-wrap gap-2 text-sm">
-          {["PENDING_APPROVAL", "APPROVED", "REJECTED", "DRAFT"].map((s) => (
-            <Link
-              key={s}
-              href={filterHref({ status: status === s ? "" : s })}
-              className={`rounded px-3 py-1 ${status === s ? "bg-accent text-paper" : "bg-ink/5"}`}
-            >
-              {s.replace("_", " ")}
-            </Link>
-          ))}
-        </div>
-
-        {skills.length > 0 && (
-          <div className="flex flex-wrap gap-2 text-sm">
-            {skills.map((sk) => (
-              <Link
-                key={sk.id}
-                href={filterHref({ skillId: skillId === sk.id ? "" : sk.id })}
-                className={`rounded px-3 py-1 ${skillId === sk.id ? "bg-accent text-paper" : "bg-ink/5"}`}
-              >
-                {sk.name}
-              </Link>
-            ))}
+      {/* Companies Grid */}
+      {companies.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-sm max-w-lg mx-auto">
+          <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-200 text-[#1d4ed8] flex items-center justify-center mx-auto mb-4">
+            <Building2 className="w-7 h-7" />
           </div>
-        )}
-
-        <div className="flex gap-2 text-sm">
-          {["beginner", "intermediate", "advanced"].map((d) => (
-            <Link
-              key={d}
-              href={filterHref({ difficulty: difficulty === d ? "" : d })}
-              className={`rounded px-3 py-1 capitalize ${difficulty === d ? "bg-accent text-paper" : "bg-ink/5"}`}
+          <h3 className="text-base font-bold text-[#0f172a] mb-1">No Companies Registered Yet</h3>
+          <p className="text-xs text-slate-500 mb-6 max-w-sm mx-auto">
+            Create your first client company before generating question banks.
+          </p>
+          <Link
+            href="/admin/companies"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#1d4ed8] hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-wider shadow-sm transition-all"
+          >
+            Go to Companies &rarr;
+          </Link>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {companies.map((c) => (
+            <div
+              key={c.id}
+              className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:border-slate-300 hover:shadow-cardHover transition-all flex flex-col justify-between group"
             >
-              {d}
-            </Link>
+              <div>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-50 border border-purple-100 text-[#7c3aed] flex items-center justify-center font-bold text-sm">
+                    {c.name.substring(0, 2).toUpperCase()}
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-wider">
+                    {c.industry || "General"}
+                  </span>
+                </div>
+
+                <h3 className="text-base font-bold text-[#0f172a] group-hover:text-[#1d4ed8] transition-colors line-clamp-1">
+                  {c.name}
+                </h3>
+
+                <div className="mt-4 p-3 rounded-xl bg-slate-50 border border-slate-100 text-center">
+                  <span className="text-2xl font-black text-[#0f172a] block">
+                    {c._count.questions}
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Questions Assigned
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <div className="mt-5 pt-4 border-t border-slate-100">
+                <Link
+                  href={`/admin/question-bank/${c.id}`}
+                  className="w-full py-2.5 px-3 rounded-xl bg-[#0f172a] hover:bg-slate-800 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-blue-300" />
+                  <span>Manage & Generate Questions</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            </div>
           ))}
         </div>
-      </div>
-
-      <ul className="flex flex-col gap-2">
-        {questions.map((q) => (
-          <li key={q.id}>
-            <Link
-              href={`/admin/question-bank/${q.id}`}
-              className="block rounded border border-ink/10 p-3 hover:border-accent"
-            >
-              <div className="mb-1 flex items-center justify-between">
-                <span className={`rounded px-2 py-0.5 text-xs ${STATUS_STYLES[q.status]}`}>
-                  {q.status.replace("_", " ")}
-                </span>
-                <span className="text-xs text-ink/40">
-                  {q.source === "AI_GENERATED" ? "AI generated" : "Human"} · {q.skill?.name ?? "—"} ·{" "}
-                  {q.difficulty}
-                </span>
-              </div>
-              <p className="text-sm">{q.prompt}</p>
-            </Link>
-          </li>
-        ))}
-        {questions.length === 0 && <p className="text-ink/60">No questions match this filter.</p>}
-      </ul>
+      )}
     </div>
   );
 }

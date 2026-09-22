@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
       description: data.description,
       durationMinutes: data.durationMinutes,
       numQuestions: data.numQuestions,
-      categories: data.categories ?? [],
+      categories: data.categories ? JSON.stringify(data.categories) : undefined,
       randomizeQuestions: data.randomizeQuestions,
       randomizeOptions: data.randomizeOptions,
       requireScreenShare: data.requireScreenShare,

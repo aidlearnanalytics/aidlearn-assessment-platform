@@ -1,21 +1,10 @@
-// AidLearn Assessment Platform — Stage 1 schema
-// Postgres (Supabase). Run `npm run db:push` against DATABASE_URL to create tables.
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
-}
-
-// ---------- Auth / Admin ----------
-
-enum AdminRole {
-  SUPER_ADMIN     // AidLearn staff — sees all companies
-  COMPANY_ADMIN   // scoped to one company
-  REVIEWER        // can approve/reject questions, no publish rights
 }
 
 model AdminUser {
@@ -23,7 +12,7 @@ model AdminUser {
   email         String    @unique
   passwordHash  String
   name          String
-  role          AdminRole @default(COMPANY_ADMIN)
+  role          String    @default("SUPER_ADMIN")
   companyId     String?
   company       Company?  @relation(fields: [companyId], references: [id])
   createdAt     DateTime  @default(now())
@@ -33,216 +22,173 @@ model AdminUser {
   createdQuestions  Question[] @relation("QuestionCreator")
 }
 
-// ---------- Companies (multi-tenant) ----------
-
 model Company {
-  id            String   @id @default(cuid())
-  name          String
-  slug          String   @unique
-  logoUrl       String?
-  primaryColor  String?  // branding
+  id             String   @id @default(cuid())
+  name           String
+  slug           String   @unique
+  logoUrl        String?
+  primaryColor   String?
   secondaryColor String?
-  industry      String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  industry       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   admins        AdminUser[]
   assessments   Assessment[]
   participants  Participant[]
-}
-
-// ---------- Question Bank ----------
-
-enum QuestionStatus {
-  DRAFT
-  PENDING_APPROVAL
-  APPROVED
-  REJECTED
-  ARCHIVED
-}
-
-enum QuestionSource {
-  HUMAN
-  AI_GENERATED
-}
-
-enum QuestionType {
-  MULTIPLE_CHOICE
-  MULTIPLE_SELECT
-  TRUE_FALSE
-  SHORT_ANSWER
-  FORMULA_ENTRY   // e.g. "write the Excel formula for..."
+  questions     Question[]
 }
 
 model Skill {
   id        String     @id @default(cuid())
-  name      String     @unique   // e.g. "Excel", "Power BI", "SQL"
+  name      String     @unique
   questions Question[]
 }
 
 model Category {
   id        String     @id @default(cuid())
-  name      String     @unique   // e.g. "Lookup Functions", "Pivot Tables"
+  name      String     @unique
   questions Question[]
 }
 
 model Question {
-  id            String         @id @default(cuid())
+  id            String    @id @default(cuid())
   prompt        String
-  type          QuestionType   @default(MULTIPLE_CHOICE)
-  options       Json?          // [{id, text, isCorrect}] for MC/MS; null for short-answer
-  correctAnswer String?        // for SHORT_ANSWER / FORMULA_ENTRY
+  type          String    @default("MULTIPLE_CHOICE")
+  options       String?
+  correctAnswer String?
   explanation   String?
-  difficulty    String         // "beginner" | "intermediate" | "advanced"
-  industry      String?        // e.g. "financial-services", "general"
-  points        Int            @default(1)
+  difficulty    String
+  industry      String?
+  points        Int       @default(1)
+
+  companyId     String?
+  company       Company?   @relation(fields: [companyId], references: [id], onDelete: SetNull)
 
   skillId       String?
-  skill         Skill?         @relation(fields: [skillId], references: [id])
+  skill         Skill?     @relation(fields: [skillId], references: [id])
   categoryId    String?
-  category      Category?      @relation(fields: [categoryId], references: [id])
+  category      Category?  @relation(fields: [categoryId], references: [id])
 
-  source        QuestionSource @default(HUMAN)
-  status        QuestionStatus @default(DRAFT)
+  source        String    @default("HUMAN")
+  status        String    @default("APPROVED")
 
   createdById   String?
-  createdBy     AdminUser?     @relation("QuestionCreator", fields: [createdById], references: [id])
+  createdBy     AdminUser? @relation("QuestionCreator", fields: [createdById], references: [id])
   approvedById  String?
-  approvedBy    AdminUser?     @relation("QuestionApprover", fields: [approvedById], references: [id])
+  approvedBy    AdminUser? @relation("QuestionApprover", fields: [approvedById], references: [id])
   approvedAt    DateTime?
 
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   assessmentQuestions AssessmentQuestion[]
   answers             Answer[]
 }
 
-// ---------- Assessment Builder ----------
-
 model Assessment {
-  id                String   @id @default(cuid())
-  name              String
-  description       String?
-  companyId         String
-  company           Company  @relation(fields: [companyId], references: [id])
+  id                 String   @id @default(cuid())
+  name               String
+  description        String?
+  companyId          String
+  company            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  durationMinutes   Int      @default(60)
-  numQuestions      Int      @default(20)
-  difficultyMix     Json?    // {beginner: 5, intermediate: 10, advanced: 5}
-  categories        String[] // category ids/names to draw from
+  durationMinutes    Int      @default(45)
+  numQuestions       Int      @default(20)
+  difficultyMix      String?
+  categories         String?
 
-  randomizeQuestions Boolean @default(true)
-  randomizeOptions   Boolean @default(true)
+  randomizeQuestions Boolean  @default(true)
+  randomizeOptions    Boolean  @default(true)
 
-  requireScreenShare Boolean @default(true)
-  requireFullscreen  Boolean @default(true)
-  monitorTabSwitch   Boolean @default(true)
-  monitorVisibility  Boolean @default(true)
-  maxViolations      Int?    // auto-submit after N violations; null = log only
+  requireScreenShare Boolean  @default(false)
+  requireFullscreen   Boolean  @default(true)
+  monitorTabSwitch   Boolean  @default(true)
+  monitorVisibility  Boolean  @default(true)
+  maxViolations      Int?
 
-  passingScorePct    Int?    // e.g. 70
+  passingScorePct    Int?     @default(70)
 
-  isPublished        Boolean @default(false)
-  publishedAt        DateTime?
+  isPublished        Boolean  @default(true)
+  publishedAt        DateTime? @default(now())
 
   createdAt          DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  updatedAt          DateTime @updatedAt
 
-  questions           AssessmentQuestion[]
-  attempts             AssessmentAttempt[]
+  questions          AssessmentQuestion[]
+  attempts           AssessmentAttempt[]
 }
 
-// Explicit join table so a question's order/points can be overridden per assessment
 model AssessmentQuestion {
-  id            String     @id @default(cuid())
-  assessmentId  String
-  assessment    Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
-  questionId    String
-  question      Question   @relation(fields: [questionId], references: [id])
-  order         Int        @default(0)
+  id             String     @id @default(cuid())
+  assessmentId   String
+  assessment     Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  questionId     String
+  question       Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  order          Int        @default(0)
   pointsOverride Int?
 
   @@unique([assessmentId, questionId])
 }
 
-// ---------- Participants & Attempts ----------
-
 model Participant {
-  id          String   @id @default(cuid())
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id])
-  fullName    String
-  email       String
-  department  String?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fullName   String
+  email      String
+  phone      String?
+  department String?
+  createdAt  DateTime @default(now())
 
-  attempts    AssessmentAttempt[]
+  attempts   AssessmentAttempt[]
 
   @@unique([companyId, email])
 }
 
-enum AttemptStatus {
-  REGISTERED
-  IN_PROGRESS
-  SUBMITTED
-  TERMINATED   // ended early due to violations
-  EXPIRED      // ran out of time
-}
-
 model AssessmentAttempt {
-  id             String        @id @default(cuid())
-  assessmentId   String
-  assessment     Assessment    @relation(fields: [assessmentId], references: [id])
-  participantId  String
-  participant    Participant   @relation(fields: [participantId], references: [id])
+  id               String        @id @default(cuid())
+  assessmentId     String
+  assessment       Assessment    @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  participantId    String
+  participant      Participant   @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
-  status         AttemptStatus @default(REGISTERED)
-  startedAt      DateTime?
-  submittedAt    DateTime?
-  timeTakenSecs  Int?
+  status           String        @default("REGISTERED")
+  startedAt        DateTime?
+  submittedAt      DateTime?
+  timeTakenSecs    Int?
 
-  overallScore    Float?
-  overallPct      Float?
-  categoryScores  Json?   // {"Pivot Tables": 80, "Lookup Functions": 60}
-  difficultyScores Json?  // {"beginner": 90, "advanced": 40}
+  overallScore     Float?
+  overallPct       Float?
+  categoryScores   String?
+  difficultyScores String?
+  aiDiagnostic     String?
 
-  answers        Answer[]
-  violations     ViolationLog[]
+  answers          Answer[]
+  violations       ViolationLog[]
 
-  createdAt      DateTime @default(now())
+  createdAt        DateTime @default(now())
 }
 
 model Answer {
-  id          String   @id @default(cuid())
-  attemptId   String
-  attempt     AssessmentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  questionId  String
-  question    Question @relation(fields: [questionId], references: [id])
-  response    Json     // selected option id(s) or free text
-  isCorrect   Boolean?
+  id            String            @id @default(cuid())
+  attemptId     String
+  attempt       AssessmentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId    String
+  question      Question          @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  response      String
+  isCorrect     Boolean?
   pointsAwarded Float?
-  answeredAt  DateTime @default(now())
+  answeredAt    DateTime          @default(now())
 
   @@unique([attemptId, questionId])
 }
 
-// ---------- Monitoring ----------
-
-enum ViolationType {
-  TAB_SWITCH
-  VISIBILITY_HIDDEN
-  FULLSCREEN_EXIT
-  SCREEN_SHARE_STOPPED
-  COPY_PASTE
-  DEVTOOLS_OPEN
-}
-
 model ViolationLog {
-  id          String        @id @default(cuid())
-  attemptId   String
-  attempt     AssessmentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  type        ViolationType
-  detail      String?
-  occurredAt  DateTime      @default(now())
+  id         String            @id @default(cuid())
+  attemptId  String
+  attempt    AssessmentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  type       String
+  detail     String?
+  occurredAt DateTime          @default(now())
 }

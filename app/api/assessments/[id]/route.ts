@@ -40,9 +40,25 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  const data = parsed.data;
   const assessment = await db.assessment.update({
     where: { id: params.id },
-    data: parsed.data,
+    data: {
+      name: data.name,
+      companyId: data.companyId,
+      description: data.description,
+      durationMinutes: data.durationMinutes,
+      numQuestions: data.numQuestions,
+      categories: data.categories ? JSON.stringify(data.categories) : undefined,
+      randomizeQuestions: data.randomizeQuestions,
+      randomizeOptions: data.randomizeOptions,
+      requireScreenShare: data.requireScreenShare,
+      requireFullscreen: data.requireFullscreen,
+      monitorTabSwitch: data.monitorTabSwitch,
+      monitorVisibility: data.monitorVisibility,
+      maxViolations: data.maxViolations,
+      passingScorePct: data.passingScorePct,
+    },
   });
 
   return NextResponse.json({ assessment });
