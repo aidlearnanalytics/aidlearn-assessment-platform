@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { db } from "./db";
 
 export const authOptions: NextAuthOptions = {
+  secret: process.env.NEXTAUTH_SECRET || "aidlearn-assessment-platform-secret-super-key-2026",
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   providers: [
@@ -53,7 +54,6 @@ export const authOptions: NextAuthOptions = {
 };
 
 // Route-guard helper for server components / API routes.
-// Usage: const session = await requireAdmin(); if company-scoped, filter by session.user.companyId
 export async function requireRole(allowed: string[]) {
   const { getServerSession } = await import("next-auth");
   const session = await getServerSession(authOptions);
