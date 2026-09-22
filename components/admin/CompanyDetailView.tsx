@@ -234,7 +234,7 @@ export default function CompanyDetailView({ company }: CompanyDetailProps) {
           <div className="p-6 border-b border-slate-100 flex items-center justify-between">
             <div>
               <h2 className="text-base font-bold text-slate-900">Candidate Evaluation Roster</h2>
-              <p className="text-xs text-slate-500">Live proctoring records and performance logs</p>
+              <p className="text-xs text-slate-500">Candidate assessment records and performance logs</p>
             </div>
           </div>
 
@@ -255,7 +255,7 @@ export default function CompanyDetailView({ company }: CompanyDetailProps) {
                     <th className="px-6 py-3.5">Department</th>
                     <th className="px-6 py-3.5">Status</th>
                     <th className="px-6 py-3.5">Score</th>
-                    <th className="px-6 py-3.5">Proctoring Flags</th>
+                    <th className="px-6 py-3.5">Status</th>
                     <th className="px-6 py-3.5">Submitted At</th>
                     <th className="px-6 py-3.5 text-right">Actions</th>
                   </tr>
@@ -447,10 +447,10 @@ export default function CompanyDetailView({ company }: CompanyDetailProps) {
                   )}
                 </div>
 
-                {/* Proctoring Log Summary */}
+                {/* Diagnostic Summary */}
                 <div className="border-t border-slate-100 pt-4">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
-                    Proctoring Audit
+                    Assessment Diagnostics
                   </h4>
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-500">Recorded Violations:</span>

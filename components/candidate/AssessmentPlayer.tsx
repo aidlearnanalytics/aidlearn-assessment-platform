@@ -133,57 +133,14 @@ export default function AssessmentPlayer({
     }
   };
 
-  // Proctoring Listeners
+  // Window event hygiene
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden && monitorTabSwitch && !submitting) {
-        setWarningMessage("Tab switch detected! Leaving this window is recorded as a proctoring violation.");
-        logViolation("tab_switch", "Candidate navigated away from assessment window.");
-      }
-    };
-
-    const handleWindowBlur = () => {
-      if (monitorTabSwitch && !submitting) {
-        logViolation("window_blur", "Assessment window lost focus.");
-      }
-    };
-
     const handleFullscreenChange = () => {
-      const fsActive = !!document.fullscreenElement;
-      setIsFullscreen(fsActive);
-      if (!fsActive && requireFullscreen && !submitting) {
-        setWarningMessage("Fullscreen was exited. Please re-enable fullscreen to continue your assessment.");
-        logViolation("fullscreen_exit", "Candidate exited fullscreen mode.");
-      }
+      setIsFullscreen(!!document.fullscreenElement);
     };
-
-    const preventKeys = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && ["c", "v", "x", "a", "u", "s"].includes(e.key.toLowerCase())) {
-        e.preventDefault();
-      }
-      if (e.key === "F12") {
-        e.preventDefault();
-      }
-    };
-
-    const preventContext = (e: MouseEvent) => {
-      e.preventDefault();
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("blur", handleWindowBlur);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
-    window.addEventListener("keydown", preventKeys);
-    window.addEventListener("contextmenu", preventContext);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("blur", handleWindowBlur);
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-      window.removeEventListener("keydown", preventKeys);
-      window.removeEventListener("contextmenu", preventContext);
-    };
-  }, [monitorTabSwitch, requireFullscreen, submitting, logViolation]);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
 
   // Countdown Timer
   useEffect(() => {
@@ -272,7 +229,7 @@ export default function AssessmentPlayer({
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-[#0f172a] flex flex-col select-none">
-      {/* Top Proctored Header */}
+      {/* Top Header */}
       <header className="bg-white border-b border-slate-200 px-4 md:px-8 py-3.5 sticky top-0 z-40 shadow-xs">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           {/* Logo & Assessment Details */}

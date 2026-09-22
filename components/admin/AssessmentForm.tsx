@@ -153,7 +153,7 @@ export default function AssessmentForm({ companies }: { companies: Company[] }) 
       </div>
 
       <div>
-        <label className="mb-2 block text-xs font-bold text-slate-700 uppercase">Proctoring & Randomization</label>
+        <label className="mb-2 block text-xs font-bold text-slate-700 uppercase">Assessment Configuration</label>
         <div className="grid grid-cols-2 gap-2.5 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
           {TOGGLES.map((t) => (
             <label key={t.key} className="flex items-center gap-2 text-xs font-medium text-slate-700">

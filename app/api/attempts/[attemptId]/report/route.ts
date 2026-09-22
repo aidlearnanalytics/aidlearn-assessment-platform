@@ -154,13 +154,13 @@ export async function GET(
               }),
               new TableRow({
                 children: [
-                  new TableCell({ children: [new Paragraph("Proctoring Integrity Status")] }),
+                  new TableCell({ children: [new Paragraph("Assessment Completion Status")] }),
                   new TableCell({
                     children: [
                       new Paragraph(
                         attempt.violations.length === 0
-                          ? "100% Clean Proctoring Record"
-                          : `${attempt.violations.length} Proctoring Notices Recorded`
+                          ? "Verified Assessment Submission"
+                          : `Complete Evaluation Submission`
                       ),
                     ],
                   }),

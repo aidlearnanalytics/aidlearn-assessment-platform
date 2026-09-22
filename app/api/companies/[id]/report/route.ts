@@ -201,7 +201,7 @@ Paragraph 3: Strategic Training Roadmap and recommendations for corporate traini
                   new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Department", bold: true })] })] }),
                   new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Score", bold: true })] })] }),
                   new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Status", bold: true })] })] }),
-                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Proctoring Integrity", bold: true })] })] }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Evaluation Status", bold: true })] })] }),
                 ],
               }),
               ...company.participants.map((p) => {
