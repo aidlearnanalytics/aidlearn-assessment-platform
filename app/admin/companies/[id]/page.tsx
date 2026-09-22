@@ -9,27 +9,28 @@ export default async function CompanyDetailPage({
 }: {
   params: { id: string };
 }) {
-  const company = await db.company.findUnique({
-    where: { id: params.id },
-    include: {
-      assessments: {
-        include: {
-          questions: { select: { id: true } },
-        },
-      },
-      participants: {
-        include: {
-          attempts: {
-            include: {
-              violations: true,
-            },
-            orderBy: { createdAt: "desc" },
+  let company: any = null;
+  try {
+    company = await db.company.findUnique({
+      where: { id: params.id },
+      include: {
+        assessments: {
+          include: {
+            questions: { select: { id: true } },
           },
         },
-        orderBy: { createdAt: "desc" },
+        participants: {
+          include: {
+            attempts: {
+              orderBy: { createdAt: "desc" },
+            },
+          },
+        },
       },
-    },
-  });
+    });
+  } catch (err) {
+    console.error("Failed to load company details:", err);
+  }
 
   if (!company) {
     notFound();

@@ -9,26 +9,39 @@ export default async function CompanyQuestionBankPage({
 }: {
   params: { companyId: string };
 }) {
-  const company = await db.company.findUnique({
-    where: { id: params.companyId },
-  });
+  let company: any = null;
+  let questions: any[] = [];
+
+  try {
+    company = await db.company.findUnique({
+      where: { id: params.companyId },
+    });
+
+    if (company) {
+      questions = await db.question.findMany({
+        include: {
+          skill: true,
+          category: true,
+          createdBy: { select: { name: true, email: true } },
+          approvedBy: { select: { name: true, email: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      }).catch(() => []);
+    }
+  } catch (err) {
+    console.error("Failed to load question bank data:", err);
+  }
 
   if (!company) {
     notFound();
   }
 
-  const questions = await db.question.findMany({
-    include: {
-      skill: true,
-      category: true,
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
-  const companyWithQuestions = {
-    ...company,
-    questions,
-  };
-
-  return <CompanyQuestionBankView company={companyWithQuestions as any} />;
+  return (
+    <CompanyQuestionBankView
+      company={{
+        ...company,
+        questions,
+      }}
+    />
+  );
 }

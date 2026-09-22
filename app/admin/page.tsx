@@ -17,29 +17,39 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboardPage() {
-  const [
-    totalCompanies,
-    totalParticipants,
-    attempts,
-    totalQuestions,
-    recentAttempts,
-  ] = await Promise.all([
-    db.company.count(),
-    db.participant.count(),
-    db.assessmentAttempt.findMany({
-      where: { status: "SUBMITTED" },
-      select: { overallPct: true },
-    }),
-    db.question.count(),
-    db.assessmentAttempt.findMany({
-      take: 8,
-      orderBy: { createdAt: "desc" },
-      include: {
-        participant: { include: { company: true } },
-        assessment: true,
-      },
-    }),
-  ]);
+  let totalCompanies = 0;
+  let totalParticipants = 0;
+  let attempts: { overallPct: number | null }[] = [];
+  let totalQuestions = 0;
+  let recentAttempts: any[] = [];
+
+  try {
+    const results = await Promise.all([
+      db.company.count().catch(() => 0),
+      db.participant.count().catch(() => 0),
+      db.assessmentAttempt.findMany({
+        where: { status: "SUBMITTED" },
+        select: { overallPct: true },
+      }).catch(() => []),
+      db.question.count().catch(() => 0),
+      db.assessmentAttempt.findMany({
+        take: 8,
+        orderBy: { createdAt: "desc" },
+        include: {
+          participant: { include: { company: true } },
+          assessment: true,
+        },
+      }).catch(() => []),
+    ]);
+
+    totalCompanies = results[0];
+    totalParticipants = results[1];
+    attempts = results[2];
+    totalQuestions = results[3];
+    recentAttempts = results[4];
+  } catch (err) {
+    console.error("Dashboard data load error:", err);
+  }
 
   const avgScore =
     attempts.length > 0
@@ -48,38 +58,35 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="space-y-8">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
         <div>
-          <h1 className="text-2xl md:text-3xl font-black text-[#0f172a] tracking-tight">
-            Executive Analytics Dashboard
+          <h1 className="text-2xl sm:text-3xl font-black text-[#0f172a] tracking-tight">
+            Executive Diagnostic Overview
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Real-time organizational diagnostics, client benchmarking, and assessment metrics.
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            Real time skills analytics, client company directories, and diagnostic submissions.
           </p>
         </div>
-
-        {/* Action Buttons */}
         <div className="flex items-center gap-3">
           <Link
             href="/admin/companies"
-            className="px-4 py-2.5 rounded-xl bg-[#1d4ed8] hover:bg-blue-700 active:scale-[0.99] text-white text-xs font-bold uppercase tracking-wider shadow-sm transition-all flex items-center gap-2 cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-bold text-xs shadow-sm transition-all cursor-pointer"
           >
             <PlusCircle className="w-4 h-4" />
-            <span>Add Company</span>
+            <span>Manage Companies</span>
           </Link>
-
           <Link
             href="/admin/question-bank"
-            className="px-4 py-2.5 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 active:scale-[0.99] text-[#0f172a] text-xs font-bold uppercase tracking-wider shadow-2xs transition-all flex items-center gap-2 cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-2xs transition-all cursor-pointer"
           >
             <Sparkles className="w-4 h-4 text-[#1d4ed8]" />
-            <span>AI Question Generator</span>
+            <span>Question Bank</span>
           </Link>
         </div>
       </div>
 
-      {/* Centered Colorful KPI Metric Cards */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {/* Card 1: Companies */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col items-center justify-center text-center space-y-2 hover:border-slate-300 transition-all">
@@ -192,13 +199,13 @@ export default async function AdminDashboardPage() {
                   return (
                     <tr key={att.id} className="hover:bg-slate-50/60 transition-colors">
                       <td className="px-6 py-4 font-bold text-[#0f172a]">
-                        {att.participant.fullName}
+                        {att.participant?.fullName || "Candidate"}
                       </td>
                       <td className="px-6 py-4 text-slate-700 font-medium">
-                        {att.participant.company.name}
+                        {att.participant?.company?.name || "General"}
                       </td>
                       <td className="px-6 py-4 text-slate-500">
-                        {att.participant.department || "General"}
+                        {att.participant?.department || "General"}
                       </td>
                       <td className="px-6 py-4">
                         <span
@@ -226,7 +233,7 @@ export default async function AdminDashboardPage() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <Link
-                          href={`/admin/companies/${att.participant.companyId}`}
+                          href={`/admin/companies/${att.participant?.companyId || ""}`}
                           className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-[11px] transition-colors shadow-2xs cursor-pointer inline-flex items-center gap-1"
                         >
                           <span>Review</span>
