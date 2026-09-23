@@ -1,77 +1,93 @@
-export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { requireRole } from "@/lib/auth";
-import { assessmentInputSchema } from "@/lib/validations/assessment";
 
-const ADMIN_ROLES = ["SUPER_ADMIN", "COMPANY_ADMIN"];
+export const dynamic = "force-dynamic";
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    await requireRole(ADMIN_ROLES);
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  const assessment = await db.assessment.findUnique({
-    where: { id: params.id },
-    include: {
-      company: true,
-      questions: { include: { question: true }, orderBy: { order: "asc" } },
-      _count: { select: { attempts: true } },
-    },
-  });
-  if (!assessment) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json({ assessment });
+    const assessment = await db.assessment.findUnique({
+      where: { id: params.id },
+      include: {
+        company: true,
+        questions: { include: { question: true }, orderBy: { order: "asc" } },
+        _count: { select: { attempts: true } },
+      },
+    });
+
+    if (!assessment) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json({ assessment });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    await requireRole(ADMIN_ROLES);
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const existing = await db.assessment.findUnique({ where: { id: params.id } });
+    if (!existing) return NextResponse.json({ error: "Assessment not found" }, { status: 404 });
+
+    const body = await req.json();
+    const {
+      name,
+      durationMinutes,
+      passingScorePct,
+      description,
+      isPublished,
+      numQuestions,
+      requireFullscreen,
+      monitorTabSwitch,
+    } = body;
+
+    const updated = await db.assessment.update({
+      where: { id: params.id },
+      data: {
+        name: name !== undefined ? name : undefined,
+        durationMinutes: durationMinutes !== undefined ? Math.max(Number(durationMinutes) || 10, 1) : undefined,
+        passingScorePct: passingScorePct !== undefined ? Number(passingScorePct) : undefined,
+        description: description !== undefined ? description : undefined,
+        isPublished: isPublished !== undefined ? Boolean(isPublished) : undefined,
+        numQuestions: numQuestions !== undefined ? Number(numQuestions) : undefined,
+        requireFullscreen: requireFullscreen !== undefined ? Boolean(requireFullscreen) : undefined,
+        monitorTabSwitch: monitorTabSwitch !== undefined ? Boolean(monitorTabSwitch) : undefined,
+      },
+    });
+
+    return NextResponse.json({ success: true, assessment: updated });
+  } catch (err: any) {
+    console.error("Assessment Update Error:", err);
+    return NextResponse.json({ error: err.message || "Failed to update assessment" }, { status: 500 });
   }
-
-  const existing = await db.assessment.findUnique({ where: { id: params.id } });
-  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
-
-  const body = await req.json();
-  const parsed = assessmentInputSchema.partial().safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  }
-
-  const data = parsed.data;
-  const assessment = await db.assessment.update({
-    where: { id: params.id },
-    data: {
-      name: data.name,
-      companyId: data.companyId,
-      description: data.description,
-      durationMinutes: data.durationMinutes,
-      numQuestions: data.numQuestions,
-      categories: data.categories ? JSON.stringify(data.categories) : undefined,
-      randomizeQuestions: data.randomizeQuestions,
-      randomizeOptions: data.randomizeOptions,
-      requireScreenShare: data.requireScreenShare,
-      requireFullscreen: data.requireFullscreen,
-      monitorTabSwitch: data.monitorTabSwitch,
-      monitorVisibility: data.monitorVisibility,
-      maxViolations: data.maxViolations,
-      passingScorePct: data.passingScorePct,
-    },
-  });
-
-  return NextResponse.json({ assessment });
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    await requireRole(["SUPER_ADMIN"]);
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  await db.assessment.delete({ where: { id: params.id } });
-  return NextResponse.json({ ok: true });
+    const assessmentId = params.id;
+
+    // Cascade delete attempts and assessment questions
+    await db.assessmentQuestion.deleteMany({ where: { assessmentId } }).catch(() => {});
+    await db.assessmentAttempt.deleteMany({ where: { assessmentId } }).catch(() => {});
+    await db.assessment.delete({ where: { id: assessmentId } });
+
+    return NextResponse.json({ success: true, deletedId: assessmentId });
+  } catch (err: any) {
+    console.error("Assessment Delete Error:", err);
+    return NextResponse.json({ error: err.message || "Failed to delete assessment" }, { status: 500 });
+  }
 }

@@ -58,7 +58,54 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 3. Upsert Participant record
+    // 3. Check if participant already exists
+    const existingParticipant = await db.participant.findUnique({
+      where: {
+        companyId_email: {
+          companyId,
+          email: cleanEmail,
+        },
+      },
+    });
+
+    if (existingParticipant) {
+      // Check if participant already has an attempt for this assessment
+      const existingAttempt = await db.assessmentAttempt.findFirst({
+        where: {
+          participantId: existingParticipant.id,
+          assessmentId: assessment.id,
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (existingAttempt) {
+        // If already submitted or terminated, reject repeat attempt!
+        if (existingAttempt.status === "SUBMITTED" || existingAttempt.status === "TERMINATED") {
+          return NextResponse.json(
+            {
+              error: "You have already completed this assessment. Each candidate is permitted only one assessment attempt.",
+              alreadySubmitted: true,
+              attemptId: existingAttempt.id,
+              assessmentName: assessment.name,
+            },
+            { status: 403 }
+          );
+        }
+
+        // If in progress, resume active attempt
+        return NextResponse.json(
+          {
+            attemptId: existingAttempt.id,
+            assessmentName: assessment.name,
+            durationMinutes: assessment.durationMinutes,
+            resumed: true,
+          },
+          { status: 200 }
+        );
+      }
+    }
+
+    // 4. Upsert Participant record
     const participant = await db.participant.upsert({
       where: {
         companyId_email: {
@@ -80,7 +127,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // 4. Create new AssessmentAttempt
+    // 5. Create new AssessmentAttempt
     const attempt = await db.assessmentAttempt.create({
       data: {
         assessmentId: assessment.id,

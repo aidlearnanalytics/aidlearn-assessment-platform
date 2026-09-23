@@ -10,13 +10,14 @@ import {
   Briefcase,
   ArrowRight,
   ShieldCheck,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 
 interface Company {
   id: string;
   name: string;
-  slug: string;
-  industry?: string | null;
+  industry: string | null;
 }
 
 interface CandidateRegisterFormProps {
@@ -37,10 +38,12 @@ export default function CandidateRegisterForm({
   const [department, setDepartment] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [alreadyCompletedAttemptId, setAlreadyCompletedAttemptId] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setAlreadyCompletedAttemptId(null);
     setLoading(true);
 
     try {
@@ -63,6 +66,12 @@ export default function CandidateRegisterForm({
 
       const data = await res.json();
       if (!res.ok) {
+        if (data.alreadySubmitted && data.attemptId) {
+          setAlreadyCompletedAttemptId(data.attemptId);
+          setError(data.error || "You have already completed this assessment. Retakes are not permitted.");
+          setLoading(false);
+          return;
+        }
         throw new Error(data.error || "Failed to initiate assessment. Please try again.");
       }
 
@@ -83,6 +92,25 @@ export default function CandidateRegisterForm({
           Enter your candidate details below to begin your timed technical evaluation.
         </p>
       </div>
+
+      {alreadyCompletedAttemptId && (
+        <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-3 animate-in fade-in duration-150">
+          <div className="flex items-center gap-2 font-bold text-xs">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>Assessment Already Completed</span>
+          </div>
+          <p className="text-xs text-amber-800">
+            You have already submitted this diagnostic evaluation. Retakes are disabled to protect test integrity.
+          </p>
+          <a
+            href={`/results/${alreadyCompletedAttemptId}`}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs transition-colors cursor-pointer"
+          >
+            <span>View Your Results Report</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </a>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {/* Company Dropdown */}
@@ -178,7 +206,7 @@ export default function CandidateRegisterForm({
           </div>
         </div>
 
-        {error && (
+        {error && !alreadyCompletedAttemptId && (
           <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
             {error}
           </div>
@@ -192,7 +220,7 @@ export default function CandidateRegisterForm({
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || !!alreadyCompletedAttemptId}
           className="w-full mt-2 py-3.5 px-4 rounded-xl bg-[#1d4ed8] hover:bg-blue-700 active:scale-[0.99] text-white text-xs font-bold uppercase tracking-wider shadow-sm disabled:opacity-60 transition-all flex items-center justify-center gap-2 cursor-pointer"
         >
           {loading ? (

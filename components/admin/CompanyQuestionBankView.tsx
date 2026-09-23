@@ -20,6 +20,9 @@ import {
   CheckSquare,
   Square,
   AlertTriangle,
+  Clock,
+  Settings2,
+  Edit3,
 } from "lucide-react";
 
 interface OptionItem {
@@ -43,6 +46,16 @@ interface QuestionItem {
   status: string;
 }
 
+interface AssessmentItem {
+  id: string;
+  name: string;
+  durationMinutes: number;
+  numQuestions: number;
+  passingScorePct?: number | null;
+  description?: string | null;
+  isPublished?: boolean;
+}
+
 interface CompanyQuestionBankViewProps {
   company: {
     id: string;
@@ -51,21 +64,25 @@ interface CompanyQuestionBankViewProps {
     industry?: string | null;
     questions?: QuestionItem[];
   };
-  assessment?: {
-    id: string;
-    name: string;
-    durationMinutes: number;
-    numQuestions: number;
-  } | null;
+  assessment?: AssessmentItem | null;
   questions?: QuestionItem[];
 }
 
 export default function CompanyQuestionBankView({
   company,
-  assessment,
+  assessment: initialAssessment,
   questions: initialQuestions,
 }: CompanyQuestionBankViewProps) {
   const router = useRouter();
+
+  // Local state for assessment details
+  const [currentAssessment, setCurrentAssessment] = useState<AssessmentItem | null>(
+    initialAssessment || null
+  );
+
+  useEffect(() => {
+    setCurrentAssessment(initialAssessment || null);
+  }, [initialAssessment]);
 
   // Local state for questions list
   const [questionsList, setQuestionsList] = useState<QuestionItem[]>(
@@ -113,6 +130,21 @@ export default function CompanyQuestionBankView({
   const [generating, setGenerating] = useState(false);
   const [generationMsg, setGenerationMsg] = useState<string | null>(null);
 
+  // Modal 3: Edit Quiz & Time Settings
+  const [showEditQuizModal, setShowEditQuizModal] = useState(false);
+  const [quizName, setQuizName] = useState(currentAssessment?.name || `${company.name} Assessment`);
+  const [quizDuration, setQuizDuration] = useState<number>(currentAssessment?.durationMinutes || 30);
+  const [quizPassingScore, setQuizPassingScore] = useState<number>(currentAssessment?.passingScorePct || 70);
+  const [savingQuiz, setSavingQuiz] = useState(false);
+
+  useEffect(() => {
+    if (currentAssessment) {
+      setQuizName(currentAssessment.name);
+      setQuizDuration(currentAssessment.durationMinutes);
+      setQuizPassingScore(currentAssessment.passingScorePct || 70);
+    }
+  }, [currentAssessment]);
+
   const filteredQuestions = questionsList.filter((q: QuestionItem) => {
     const matchesSearch =
       q.prompt.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -126,20 +158,15 @@ export default function CompanyQuestionBankView({
     filteredQuestions.length > 0 &&
     filteredQuestions.every((q) => selectedIds.has(q.id));
 
-  // Toggle single question selection
   const handleToggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
 
-  // Toggle select all filtered questions
   const handleToggleSelectAll = () => {
     if (isAllSelected) {
       setSelectedIds(new Set());
@@ -149,9 +176,62 @@ export default function CompanyQuestionBankView({
     }
   };
 
-  // Deselect all
   const handleDeselectAll = () => {
     setSelectedIds(new Set());
+  };
+
+  // Save Quiz / Duration Settings Handler
+  const handleSaveQuizSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentAssessment?.id) {
+      alert("No active assessment found for this company to edit.");
+      return;
+    }
+
+    setSavingQuiz(true);
+    try {
+      const res = await fetch(`/api/assessments/${currentAssessment.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: quizName.trim(),
+          durationMinutes: Math.max(Number(quizDuration) || 5, 1),
+          passingScorePct: Number(quizPassingScore) || 70,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setCurrentAssessment((prev) =>
+          prev
+            ? {
+                ...prev,
+                name: quizName.trim(),
+                durationMinutes: Math.max(Number(quizDuration) || 5, 1),
+                passingScorePct: Number(quizPassingScore) || 70,
+              }
+            : null
+        );
+        setShowEditQuizModal(false);
+        setStatusNotification({
+          type: "success",
+          message: `Quiz settings updated! Time is now set to ${quizDuration} minutes.`,
+        });
+        setTimeout(() => setStatusNotification(null), 3500);
+        router.refresh();
+      } else {
+        throw new Error(data.error || "Failed to update quiz settings");
+      }
+    } catch (err: any) {
+      console.error(err);
+      setStatusNotification({
+        type: "error",
+        message: err.message || "Failed to save quiz settings.",
+      });
+      setTimeout(() => setStatusNotification(null), 4000);
+    } finally {
+      setSavingQuiz(false);
+    }
   };
 
   // Single Question Delete
@@ -167,7 +247,6 @@ export default function CompanyQuestionBankView({
       const data = await res.json();
 
       if (res.ok && data.success) {
-        // Immediately remove from local state
         setQuestionsList((prev) => prev.filter((q) => q.id !== id));
         setSelectedIds((prev) => {
           const next = new Set(prev);
@@ -220,7 +299,6 @@ export default function CompanyQuestionBankView({
 
       const data = await res.json();
       if (res.ok && data.success) {
-        // Immediately remove from local list
         const deletedSet = new Set(idsToDelete);
         setQuestionsList((prev) => prev.filter((q) => !deletedSet.has(q.id)));
         setSelectedIds(new Set());
@@ -388,13 +466,23 @@ export default function CompanyQuestionBankView({
                 </span>
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                Company Question Bank & Diagnostic Assessment Curriculum
+                Company Question Bank & Timed Diagnostic Curriculum
               </p>
             </div>
           </div>
 
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-3">
+            {/* Edit Quiz / Time Settings Button */}
+            <button
+              onClick={() => setShowEditQuizModal(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-blue-700 px-4 py-2.5 text-xs font-bold shadow-2xs transition-all cursor-pointer"
+              title="Edit Quiz Title & Allocated Time in Minutes"
+            >
+              <Clock className="h-4 w-4 text-blue-600" />
+              <span>Edit Quiz & Duration</span>
+            </button>
+
             <button
               onClick={() => setShowAIModal(true)}
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:scale-[1.02] cursor-pointer"
@@ -413,24 +501,36 @@ export default function CompanyQuestionBankView({
           </div>
         </div>
 
-        {/* Quick Stats Grid */}
+        {/* Quick Stats Grid with Interactive Duration Badge */}
         <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-4 border-t border-slate-100 pt-6">
           <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Questions</span>
             <p className="mt-1 text-2xl font-black text-slate-900">{questionsList.length}</p>
           </div>
+
+          {/* Duration Card with Direct Edit Button */}
+          <div
+            onClick={() => setShowEditQuizModal(true)}
+            className="rounded-xl bg-slate-50 p-4 border border-slate-100 hover:border-blue-300 hover:bg-blue-50/30 transition-all cursor-pointer group"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-400 group-hover:text-blue-600 uppercase tracking-wider">
+                Quiz Duration
+              </span>
+              <Edit3 className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 transition-colors" />
+            </div>
+            <p className="mt-1 text-2xl font-black text-blue-600">
+              {currentAssessment?.durationMinutes || 30} <span className="text-xs font-bold text-slate-500">mins</span>
+            </p>
+          </div>
+
           <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Multiple Choice</span>
-            <p className="mt-1 text-2xl font-black text-blue-600">
+            <p className="mt-1 text-2xl font-black text-slate-800">
               {questionsList.filter((q: QuestionItem) => q.type === "MULTIPLE_CHOICE").length}
             </p>
           </div>
-          <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Formula / Practical</span>
-            <p className="mt-1 text-2xl font-black text-indigo-600">
-              {questionsList.filter((q: QuestionItem) => q.type === "FORMULA_ENTRY" || q.type === "SHORT_ANSWER").length}
-            </p>
-          </div>
+
           <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Assessment Status</span>
             <p className="mt-1 text-sm font-bold text-emerald-600 flex items-center gap-1.5">
@@ -687,6 +787,116 @@ export default function CompanyQuestionBankView({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* MODAL 3: EDIT QUIZ & TIME SETTINGS */}
+      {showEditQuizModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 sm:p-8 shadow-xl border border-slate-200 my-8 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-slate-900">Quiz Settings & Time</h3>
+                  <p className="text-xs text-slate-500">Configure duration and rules for {company.name}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowEditQuizModal(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveQuizSettings} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Quiz Title / Evaluation Name <span className="text-blue-600">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={quizName}
+                  onChange={(e) => setQuizName(e.target.value)}
+                  placeholder="e.g. Core Financial Analytics Diagnostic"
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Allocated Duration (Minutes) <span className="text-blue-600">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={300}
+                    required
+                    value={quizDuration}
+                    onChange={(e) => setQuizDuration(Number(e.target.value))}
+                    placeholder="e.g. 20, 30, 45"
+                    className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Candidates will have exactly this amount of time.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Passing Score Threshold (%)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={quizPassingScore}
+                    onChange={(e) => setQuizPassingScore(Number(e.target.value))}
+                    className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Target proficiency benchmark.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
+                <p className="font-bold text-slate-700">Immediate Live Sync:</p>
+                <p>
+                  Changing the duration to <strong>{quizDuration} minutes</strong> updates the active assessment in Supabase. Any candidates launching their link from this moment forward will receive the updated timer.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowEditQuizModal(false)}
+                  className="rounded-xl border border-slate-300 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingQuiz}
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 px-6 py-2.5 text-xs font-bold text-white shadow-sm transition-all disabled:opacity-60 cursor-pointer"
+                >
+                  {savingQuiz ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>Saving Settings...</span>
+                    </>
+                  ) : (
+                    <span>Save Quiz Settings</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
