@@ -17,6 +17,9 @@ import {
   Mail,
   ChevronRight,
   AlertCircle,
+  RotateCcw,
+  RefreshCw,
+  Check,
 } from "lucide-react";
 
 interface CompanyDetailProps {
@@ -58,9 +61,11 @@ interface CompanyDetailProps {
 export default function CompanyDetailView({ company }: CompanyDetailProps) {
   const [activeTab, setActiveTab] = useState<"all" | "individual">("all");
   const [downloading, setDownloading] = useState(false);
+  const [participantsList, setParticipantsList] = useState(company.participants);
+  const [resettingId, setResettingId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const participants = company.participants;
-  const completedAttempts = participants
+  const completedAttempts = participantsList
     .flatMap((p) => p.attempts)
     .filter((a) => a.status === "SUBMITTED");
 
@@ -76,10 +81,10 @@ export default function CompanyDetailView({ company }: CompanyDetailProps) {
 
   // Selected candidate for Individual View
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>(
-    participants.length > 0 ? participants[0].id : ""
+    participantsList.length > 0 ? participantsList[0].id : ""
   );
 
-  const selectedParticipant = participants.find((p) => p.id === selectedCandidateId) || participants[0];
+  const selectedParticipant = participantsList.find((p) => p.id === selectedCandidateId) || participantsList[0];
   const selectedAttempt = selectedParticipant?.attempts[0];
 
   let selectedDiag: any = null;
@@ -106,6 +111,11 @@ export default function CompanyDetailView({ company }: CompanyDetailProps) {
     }
   }
 
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
   const handleDownloadCompanyReport = async () => {
     setDownloading(true);
     try {
@@ -118,283 +128,366 @@ export default function CompanyDetailView({ company }: CompanyDetailProps) {
   };
 
   const handleDownloadCandidateReport = async (attemptId: string) => {
-    if (!attemptId) return;
-    window.location.href = `/api/attempts/${attemptId}/report`;
+    try {
+      window.location.href = `/api/attempts/${attemptId}/report`;
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleResetAttempt = async (attemptId: string, participantName: string, participantId: string) => {
+    if (!confirm(`Are you sure you want to allow a retake for ${participantName}? This will reset their previous assessment attempt so they can take the assessment again.`)) {
+      return;
+    }
+
+    setResettingId(attemptId);
+    try {
+      const res = await fetch(`/api/attempts/${attemptId}/reset`, {
+        method: "POST",
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        // Optimistically update local participants list
+        setParticipantsList((prev) =>
+          prev.map((p) => {
+            if (p.id === participantId) {
+              return {
+                ...p,
+                attempts: p.attempts.filter((a) => a.id !== attemptId),
+              };
+            }
+            return p;
+          })
+        );
+        showToast(`Assessment attempt reset. ${participantName} can now register and retake the assessment.`);
+      } else {
+        alert(data.error || "Failed to reset candidate attempt.");
+      }
+    } catch (err: any) {
+      alert("Error resetting attempt: " + err.message);
+    } finally {
+      setResettingId(null);
+    }
   };
 
   return (
-    <div className="space-y-8">
-      {/* Top Header Card */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-          <div className="flex items-start gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50 border border-blue-100 text-blue-600">
-              <Building2 className="h-7 w-7" />
+    <div className="space-y-6">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 rounded-xl bg-slate-900 text-white px-4 py-3 text-xs font-semibold shadow-2xl border border-slate-700 animate-in fade-in slide-in-from-bottom-2">
+          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Top Banner Header */}
+      <div className="rounded-2xl bg-white border border-slate-200 p-6 sm:p-8 shadow-sm">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-blue-700 to-indigo-800 text-white flex items-center justify-center font-black text-2xl shadow-md">
+              {company.name.charAt(0)}
             </div>
             <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">{company.name}</h1>
-                <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 border border-emerald-200">
-                  Active Tenant
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-blue-600">
+                  {company.industry || "Corporate Client"}
+                </span>
+                <span className="text-slate-300">&bull;</span>
+                <span className="text-xs text-slate-500">
+                  Registered {new Date(company.createdAt).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
                 </span>
               </div>
-              <p className="mt-1 text-sm text-slate-500 font-medium">
-                Industry: <span className="text-slate-800 font-semibold">{company.industry || "Enterprise Financials & Analytics"}</span> | Registered:{" "}
-                {new Date(company.createdAt).toLocaleDateString("en-GB", {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                })}
-              </p>
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 mt-0.5">{company.name}</h1>
+              <p className="text-xs text-slate-500 mt-0.5 font-mono">ID: {company.slug}</p>
             </div>
           </div>
 
-          {/* Quick Action Buttons */}
           <div className="flex flex-wrap items-center gap-3">
             <Link
               href={`/admin/question-bank/${company.id}`}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
             >
-              <BookOpen className="h-4 w-4 text-blue-600" />
-              Manage Question Bank
+              <BookOpen className="w-4 h-4" /> Question Bank
             </Link>
 
             <button
+              type="button"
               onClick={handleDownloadCompanyReport}
               disabled={downloading}
-              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:shadow cursor-pointer disabled:opacity-60"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1d4ed8] hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-wider shadow-sm transition-colors cursor-pointer disabled:opacity-60"
             >
-              <FileDown className="h-4 w-4" />
-              {downloading ? "Generating Report..." : "Download Executive Report (.docx)"}
+              <FileDown className="w-4 h-4" />
+              <span>{downloading ? "Preparing Report..." : "Executive Report (.docx)"}</span>
             </button>
           </div>
         </div>
 
-        {/* 4 Metric KPI Strip */}
-        <div className="mt-8 grid grid-cols-2 gap-4 border-t border-slate-100 pt-6 sm:grid-cols-4">
-          <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
-              <Users className="h-3.5 w-3.5 text-blue-600" /> Total Roster
+        {/* Aggregate Benchmark Summary */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-8 pt-6 border-t border-slate-100">
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Registered</span>
+            <div className="mt-1 flex items-baseline gap-1">
+              <span className="text-2xl font-black text-slate-900">{participantsList.length}</span>
+              <span className="text-xs text-slate-500">candidates</span>
             </div>
-            <p className="mt-1.5 text-2xl font-black text-slate-900">{participants.length}</p>
           </div>
 
-          <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Completed Exams
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Completed Assessments</span>
+            <div className="mt-1 flex items-baseline gap-1">
+              <span className="text-2xl font-black text-slate-900">{completedAttempts.length}</span>
+              <span className="text-xs text-slate-500">submitted</span>
             </div>
-            <p className="mt-1.5 text-2xl font-black text-slate-900">{completedAttempts.length}</p>
           </div>
 
-          <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
-              <Award className="h-3.5 w-3.5 text-amber-600" /> Mean Score
+          <div className="p-4 rounded-xl bg-blue-50/60 border border-blue-100">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700">Average Score</span>
+            <div className="mt-1 flex items-baseline gap-1">
+              <span className="text-2xl font-black text-blue-900">{avgScore}%</span>
+              <span className="text-xs text-blue-700">mean</span>
             </div>
-            <p className="mt-1.5 text-2xl font-black text-slate-900">{avgScore}%</p>
           </div>
 
-          <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
-              <Sparkles className="h-3.5 w-3.5 text-indigo-600" /> Pass Rate (&ge;70%)
+          <div className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-100">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Benchmark Pass Rate</span>
+            <div className="mt-1 flex items-baseline gap-1">
+              <span className="text-2xl font-black text-emerald-900">{passRate}%</span>
+              <span className="text-xs text-emerald-700">&ge; 70% benchmark</span>
             </div>
-            <p className="mt-1.5 text-2xl font-black text-slate-900">{passRate}%</p>
           </div>
         </div>
       </div>
 
-      {/* Tabs Navigation */}
-      <div className="flex items-center justify-between border-b border-slate-200">
-        <div className="flex space-x-8">
-          <button
-            onClick={() => setActiveTab("all")}
-            className={`pb-4 text-sm font-bold transition-all relative ${
-              activeTab === "all"
-                ? "text-blue-600 border-b-2 border-blue-600"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            All Candidates ({participants.length})
-          </button>
-          <button
-            onClick={() => setActiveTab("individual")}
-            className={`pb-4 text-sm font-bold transition-all relative ${
-              activeTab === "individual"
-                ? "text-blue-600 border-b-2 border-blue-600"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            Individual Candidate Diagnostics
-          </button>
-        </div>
+      {/* Tabs for All Candidates vs Individual Deep-Dive */}
+      <div className="flex border-b border-slate-200">
+        <button
+          type="button"
+          onClick={() => setActiveTab("all")}
+          className={`pb-3 px-4 text-xs font-bold uppercase tracking-wider transition-colors border-b-2 cursor-pointer ${
+            activeTab === "all"
+              ? "border-[#1d4ed8] text-[#1d4ed8]"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          Candidate Roster ({participantsList.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("individual")}
+          className={`pb-3 px-4 text-xs font-bold uppercase tracking-wider transition-colors border-b-2 cursor-pointer ${
+            activeTab === "individual"
+              ? "border-[#1d4ed8] text-[#1d4ed8]"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          Individual Diagnostic Feedback
+        </button>
       </div>
 
-      {/* TAB 1: ALL CANDIDATES TABLE */}
+      {/* Tab 1: All Candidates Table */}
       {activeTab === "all" && (
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+          <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <h2 className="text-base font-bold text-slate-900">Candidate Evaluation Roster</h2>
-              <p className="text-xs text-slate-500">Candidate assessment records and performance logs</p>
-            </div>
-          </div>
-
-          {participants.length === 0 ? (
-            <div className="p-12 text-center">
-              <Users className="mx-auto h-10 w-10 text-slate-300" />
-              <h3 className="mt-3 text-sm font-bold text-slate-700">No candidates registered yet</h3>
-              <p className="mt-1 text-xs text-slate-400">
-                Direct candidates to the portal home to register under {company.name}.
+              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                Candidate Evaluation List
+              </h2>
+              <p className="text-xs text-slate-500">
+                Click on any candidate to inspect their detailed diagnostic report or reset their attempt for retakes.
               </p>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-100">
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200 text-[10px]">
+                <tr>
+                  <th className="py-3 px-4">Candidate</th>
+                  <th className="py-3 px-4">Department / Focus</th>
+                  <th className="py-3 px-4">Score</th>
+                  <th className="py-3 px-4">Evaluation Status</th>
+                  <th className="py-3 px-4">Violations</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {participantsList.length === 0 ? (
                   <tr>
-                    <th className="px-6 py-3.5">Candidate</th>
-                    <th className="px-6 py-3.5">Department</th>
-                    <th className="px-6 py-3.5">Status</th>
-                    <th className="px-6 py-3.5">Score</th>
-                    <th className="px-6 py-3.5">Status</th>
-                    <th className="px-6 py-3.5">Submitted At</th>
-                    <th className="px-6 py-3.5 text-right">Actions</th>
+                    <td colSpan={6} className="py-8 text-center text-slate-400">
+                      No candidates registered for this company yet.
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-700">
-                  {participants.map((p) => {
-                    const att = p.attempts[0];
-                    const scorePct = att?.overallPct !== null && att?.overallPct !== undefined ? Math.round(att.overallPct) : null;
+                ) : (
+                  participantsList.map((p) => {
+                    const attempt = p.attempts[0];
+                    const hasSubmitted = attempt && attempt.status === "SUBMITTED";
+                    const scorePct =
+                      attempt?.overallPct !== null && attempt?.overallPct !== undefined
+                        ? Math.round(attempt.overallPct)
+                        : null;
                     const passed = scorePct !== null && scorePct >= 70;
-                    const violationsCount = att?.violations?.length || 0;
+                    const violationsCount = attempt?.violations?.length || 0;
 
                     return (
-                      <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="px-6 py-4">
+                      <tr key={p.id} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="py-3.5 px-4">
                           <div className="font-bold text-slate-900">{p.fullName}</div>
-                          <div className="text-[11px] text-slate-400">{p.email}</div>
+                          <div className="text-[11px] text-slate-500 font-medium">{p.email}</div>
                         </td>
-                        <td className="px-6 py-4 font-medium text-slate-600">{p.department || "General"}</td>
-                        <td className="px-6 py-4">
-                          {att ? (
-                            <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                                att.status === "SUBMITTED"
-                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                  : "bg-blue-50 text-blue-700 border border-blue-200"
-                              }`}
-                            >
-                              {att.status}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 font-medium">Not Started</span>
-                          )}
+
+                        <td className="py-3.5 px-4">
+                          <span className="text-slate-600">{p.department || "General"}</span>
                         </td>
-                        <td className="px-6 py-4">
+
+                        <td className="py-3.5 px-4">
                           {scorePct !== null ? (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-black text-sm text-slate-900">{scorePct}%</span>
                               <span
-                                className={`font-black text-sm ${
-                                  passed ? "text-emerald-600" : scorePct >= 50 ? "text-amber-600" : "text-red-600"
+                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                  passed
+                                    ? "bg-emerald-50 text-emerald-700"
+                                    : scorePct >= 50
+                                    ? "bg-amber-50 text-amber-700"
+                                    : "bg-red-50 text-red-700"
                                 }`}
                               >
-                                {scorePct}%
-                              </span>
-                              <span className="text-[10px] text-slate-400 font-semibold">
-                                {passed ? "(Pass)" : "(Needs Training)"}
+                                {passed ? "Pass" : scorePct >= 50 ? "Competent" : "Upskill"}
                               </span>
                             </div>
                           ) : (
-                            <span className="text-slate-400">---</span>
+                            <span className="text-slate-400 italic">Not taken</span>
                           )}
                         </td>
-                        <td className="px-6 py-4">
-                          {violationsCount === 0 ? (
-                            <span className="text-emerald-700 font-semibold flex items-center gap-1 text-[11px]">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Clean (0)
+
+                        <td className="py-3.5 px-4">
+                          {hasSubmitted ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 font-bold">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Completed
+                            </span>
+                          ) : attempt ? (
+                            <span className="inline-flex items-center gap-1 text-amber-600 font-bold">
+                              <Clock className="w-3.5 h-3.5" /> In Progress
                             </span>
                           ) : (
-                            <span className="text-amber-700 font-semibold flex items-center gap-1 text-[11px]">
-                              <ShieldAlert className="w-3.5 h-3.5 text-amber-600" /> {violationsCount} flags
-                            </span>
+                            <span className="text-slate-400 font-medium">Registered</span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-slate-500">
-                          {att?.submittedAt
-                            ? new Date(att.submittedAt).toLocaleDateString("en-GB", {
-                                day: "numeric",
-                                month: "short",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })
-                            : "---"}
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          {att && att.status === "SUBMITTED" ? (
-                            <button
-                              onClick={() => handleDownloadCandidateReport(att.id)}
-                              className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline"
+
+                        <td className="py-3.5 px-4">
+                          {attempt ? (
+                            <span
+                              className={`font-semibold ${
+                                violationsCount === 0 ? "text-emerald-600" : "text-amber-600"
+                              }`}
                             >
-                              <FileDown className="w-3.5 h-3.5" /> Report (.docx)
-                            </button>
+                              {violationsCount === 0 ? "Clean (0)" : `${violationsCount} Flags`}
+                            </span>
                           ) : (
-                            <span className="text-slate-300 text-xs">No Report</span>
+                            <span className="text-slate-400">-</span>
                           )}
+                        </td>
+
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {attempt && (
+                              <button
+                                type="button"
+                                title="Allow candidate to retake this assessment"
+                                onClick={() => handleResetAttempt(attempt.id, p.fullName, p.id)}
+                                disabled={resettingId === attempt.id}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 text-[11px] font-bold transition-colors cursor-pointer disabled:opacity-50"
+                              >
+                                <RotateCcw className={`w-3.5 h-3.5 ${resettingId === attempt.id ? "animate-spin" : ""}`} />
+                                <span>{resettingId === attempt.id ? "Resetting..." : "Allow Retake"}</span>
+                              </button>
+                            )}
+
+                            {hasSubmitted && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedCandidateId(p.id);
+                                  setActiveTab("individual");
+                                }}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 font-bold hover:bg-blue-100 transition-colors cursor-pointer"
+                              >
+                                <span>Diagnostics</span>
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
-      {/* TAB 2: INDIVIDUAL CANDIDATE DIAGNOSTIC VIEW */}
+      {/* Tab 2: Individual Candidate Detailed Diagnostic */}
       {activeTab === "individual" && (
         <div className="space-y-6">
-          {/* Candidate Selector Dropdown */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
-                Select Candidate to Review
+          {/* Candidate Selector Bar */}
+          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <label htmlFor="candidate-select" className="text-xs font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">
+                Select Candidate:
               </label>
               <select
+                id="candidate-select"
                 value={selectedCandidateId}
                 onChange={(e) => setSelectedCandidateId(e.target.value)}
-                className="w-full sm:w-80 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full sm:w-72 rounded-xl border border-slate-300 px-3 py-2 text-xs bg-slate-50 font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
               >
-                {participants.map((p) => (
+                {participantsList.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.fullName} ({p.email}) - {p.department || "General"}
+                    {p.fullName} ({p.email})
                   </option>
                 ))}
               </select>
             </div>
 
-            {selectedAttempt && selectedAttempt.status === "SUBMITTED" && (
-              <button
-                onClick={() => handleDownloadCandidateReport(selectedAttempt.id)}
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:shadow cursor-pointer"
-              >
-                <FileDown className="h-4 w-4" />
-                Download Candidate Report (.docx)
-              </button>
+            {selectedAttempt && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleResetAttempt(selectedAttempt.id, selectedParticipant.fullName, selectedParticipant.id)}
+                  disabled={resettingId === selectedAttempt.id}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 ${resettingId === selectedAttempt.id ? "animate-spin" : ""}`} />
+                  <span>Allow Retake / Reset Attempt</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleDownloadCandidateReport(selectedAttempt.id)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 text-xs font-bold transition-colors cursor-pointer"
+                >
+                  <FileDown className="w-3.5 h-3.5" />
+                  <span>Candidate Report (.docx)</span>
+                </button>
+              </div>
             )}
           </div>
 
-          {/* Diagnostic Breakdown Details */}
-          {selectedParticipant && selectedAttempt ? (
+          {selectedAttempt ? (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Left Column: Candidate Summary Card */}
+              {/* Left Column: Metrics & Competencies */}
               <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
                 <div>
-                  <h3 className="text-lg font-extrabold text-slate-900">{selectedParticipant.fullName}</h3>
-                  <p className="text-xs text-slate-500">{selectedParticipant.email}</p>
-                  <p className="mt-1 text-xs font-semibold text-slate-700">Department: {selectedParticipant.department || "General"}</p>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Candidate</span>
+                  <h3 className="text-lg font-black text-slate-900">{selectedParticipant.fullName}</h3>
+                  <p className="text-xs text-slate-500 font-medium">{selectedParticipant.email}</p>
                 </div>
 
-                <div className="rounded-xl bg-slate-50 p-4 border border-slate-100 text-center">
+                {/* Score Dial */}
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-5 text-center">
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Overall Competency Score</span>
                   <div className="mt-2 flex items-baseline justify-center gap-1">
                     <span className="text-4xl font-black text-blue-600">
@@ -487,9 +580,9 @@ export default function CompanyDetailView({ company }: CompanyDetailProps) {
                       </h4>
                       <ul className="space-y-1.5 text-xs text-emerald-900">
                         {selectedDiag?.strengths && selectedDiag.strengths.length > 0 ? (
-                          selectedDiag.strengths.map((s: string, idx: number) => <li key={idx}>• {s}</li>)
+                          selectedDiag.strengths.map((s: string, idx: number) => <li key={idx}>- {s}</li>)
                         ) : (
-                          <li>• Solid understanding of basic formula logic and workflows.</li>
+                          <li>- Solid understanding of basic formula logic and workflows.</li>
                         )}
                       </ul>
                     </div>
@@ -500,9 +593,9 @@ export default function CompanyDetailView({ company }: CompanyDetailProps) {
                       </h4>
                       <ul className="space-y-1.5 text-xs text-red-900">
                         {selectedDiag?.weaknesses && selectedDiag.weaknesses.length > 0 ? (
-                          selectedDiag.weaknesses.map((w: string, idx: number) => <li key={idx}>• {w}</li>)
+                          selectedDiag.weaknesses.map((w: string, idx: number) => <li key={idx}>- {w}</li>)
                         ) : (
-                          <li>• Complex formula chaining and dynamic array execution.</li>
+                          <li>- Complex formula chaining and dynamic array execution.</li>
                         )}
                       </ul>
                     </div>
@@ -515,11 +608,12 @@ export default function CompanyDetailView({ company }: CompanyDetailProps) {
                     </h4>
                     <ul className="space-y-1.5 text-xs text-blue-950 font-medium">
                       {selectedDiag?.recommendedCurriculum && selectedDiag.recommendedCurriculum.length > 0 ? (
-                        selectedDiag.recommendedCurriculum.map((m: string, idx: number) => <li key={idx}>• {m}</li>)
+                        selectedDiag.recommendedCurriculum.map((m: string, idx: number) => <li key={idx}>- {m}</li>)
                       ) : (
                         <>
-                          <li>• AidLearn Advanced Financial Modeling Masterclass</li>
-                          <li>• SQL for Enterprise Business Intelligence & Analytics</li>
+                          <li>- AidLearn Advanced Financial Modeling</li>
+                          <li>- Excel Dynamic Arrays & Masterclass</li>
+                          <li>- SQL for Business Intelligence</li>
                         </>
                       )}
                     </ul>

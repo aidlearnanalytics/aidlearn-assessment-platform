@@ -17,52 +17,58 @@ export interface GeneratedQuestion {
 
 export const AIDLEARN_OFFICIAL_COURSES = [
   {
-    title: "Cohort-Based Training",
-    shortTitle: "Cohort",
-    focus: "Group learning, live sessions, real datasets, Microsoft Excel, Power BI, and SQL training with 1-month internship",
-    bestFor: "Group learners wanting community, structure, and foundational to intermediate analytics mastery."
+    title: "AidLearn Advanced Financial Modeling",
+    shortTitle: "Financial Modeling",
+    focus: "Dynamic 3-statement financial projections, DCF valuation, scenario analysis, sensitivity matrices, and executive financial decision models",
+    bestFor: "Finance professionals, corporate analysts, and planners wanting high-impact financial forecasting and modeling mastery."
   },
   {
-    title: "Dedicated Training",
-    shortTitle: "Dedicated",
-    focus: "Personal 1-on-1 live sessions, flexible scheduling, Microsoft Excel, Power BI, SQL, Python or SPSS, LinkedIn optimization, CV revamp, and career coaching",
-    bestFor: "Individuals wanting personal mentorship, broader curriculum, and rapid career acceleration."
+    title: "Excel Dynamic Arrays & Masterclass",
+    shortTitle: "Excel & Dynamic Arrays",
+    focus: "Modern dynamic arrays (XLOOKUP, FILTER, UNIQUE, SEQUENCE), Power Query data transformation, formula automation, and spreadsheet architecture",
+    bestFor: "Workplace analysts seeking speed, automated reporting, and advanced formula engineering in modern Excel."
   },
   {
-    title: "Self-Paced Learning",
-    shortTitle: "Self-Paced",
-    focus: "Structured pre-recorded lesson library, weekly 1-on-1 instructor check-ins, Microsoft Excel, Power BI, and 1-month internship",
-    bestFor: "Busy professionals needing schedule flexibility combined with regular instructor accountability."
+    title: "SQL for Business Intelligence",
+    shortTitle: "SQL & BI",
+    focus: "Relational database querying, multi-table JOINs, data aggregation, window functions (ROW_NUMBER, RANK), and BI data extraction pipelines",
+    bestFor: "Data analysts, BI specialists, and professionals needing direct database querying and analytics reporting."
   },
   {
-    title: "Premium Accelerator",
-    shortTitle: "Premium Accelerator",
-    focus: "Comprehensive elite training: personal live sessions, Microsoft Excel, Power BI, SQL, Python or SPSS, Microsoft certification exam preparation with exam fee paid by AidLearn, career coaching, and 1-month internship",
-    bestFor: "Professionals seeking deep career transformation and official Microsoft certification."
+    title: "Power BI & Executive Dashboards",
+    shortTitle: "Power BI",
+    focus: "Interactive data visualization, star schema data modeling, DAX calculated measures, and executive business decision dashboards",
+    bestFor: "Professionals and managers turning raw corporate data into actionable business intelligence dashboards."
   },
   {
-    title: "AI Automation",
+    title: "AI Automation & Analytics",
     shortTitle: "AI Automation",
-    focus: "Workflow automation tools, prompt engineering, AI agents and intelligent nodes, APIs, data formatting, and building custom automation tools with project internship",
-    bestFor: "Professionals wanting to automate repetitive operations and build AI-powered business tools."
+    focus: "Workflow automation tools, intelligent prompt engineering, AI agents, APIs, and custom analytics tool engineering with project internship",
+    bestFor: "Professionals wanting to eliminate repetitive manual workflows and deploy modern AI tools."
   },
   {
-    title: "AI Prompt Engineering",
-    shortTitle: "AI Prompt Engineering",
-    focus: "Foundational AI and linguistic skills, core prompting frameworks, advanced programmatic workflows, security and safety in AI systems",
-    bestFor: "Professionals wanting to master effective, structured communication with modern AI models."
+    title: "Cohort-Based Training (Flagship)",
+    shortTitle: "Cohort Training",
+    focus: "Comprehensive live group masterclass covering Microsoft Excel, Power BI, SQL, real business datasets, and a 1-month practical internship",
+    bestFor: "Learners seeking a structured, community-driven path from foundational to job-ready analytics proficiency."
   },
   {
-    title: "Computer Basics",
+    title: "Dedicated Training (1-on-1 Mentorship)",
+    shortTitle: "Dedicated 1-on-1",
+    focus: "Personal 1-on-1 instructor sessions, customized scheduling, Excel, Power BI, SQL, Python/SPSS, CV revamp, and executive career coaching",
+    bestFor: "Individuals wanting personal coaching, tailored curriculum pacing, and rapid career acceleration."
+  },
+  {
+    title: "Computer Basics & Foundation",
     shortTitle: "Computer Basics",
     focus: "Foundational computer confidence, essential operating skills, and introductory spreadsheet workflows",
     bestFor: "Beginners needing core computing skills before progressing into advanced data tools."
   },
   {
-    title: "Corporate Training",
+    title: "Corporate Team Training",
     shortTitle: "Corporate Training",
-    focus: "Custom enterprise data analytics, business intelligence dashboards, and AI automation tailored to company datasets, tools, and operational workflows",
-    bestFor: "Teams and enterprise organizations upskilling departments at scale."
+    focus: "Custom enterprise data analytics, business intelligence dashboards, and AI automation tailored to company datasets and team workflows",
+    bestFor: "Enterprises, finance teams, and organizations upskilling departments at scale."
   }
 ];
 
@@ -320,14 +326,14 @@ ${officialCoursesFormatted}
 
 CRITICAL RULES FOR RECOMMENDATIONS:
 1. In "recommendedCurriculum", you MUST select 2 to 3 of the EXACT official course titles from the list above that directly address the candidate's weaknesses and score level.
-2. DO NOT create, hallucinate, or recommend any random, fictional course titles (such as "AidLearn Advanced Financial Modeling" or "Excel Dynamic Arrays & Masterclass"). Use ONLY titles from the official catalogue above (e.g. "Cohort-Based Training", "Dedicated Training", "Self-Paced Learning", "Premium Accelerator", "AI Automation", "AI Prompt Engineering", "Computer Basics", "Corporate Training").
+2. Ensure you prioritize practical analytics courses such as "AidLearn Advanced Financial Modeling", "Excel Dynamic Arrays & Masterclass", "SQL for Business Intelligence", "Power BI & Executive Dashboards", and "Cohort-Based Training".
 3. DO NOT include any pricing, dollar figures, or fees anywhere in the diagnostic report.
 4. Keep the tone encouraging, analytical, and professional.
 5. Do NOT use en dashes or em dashes anywhere in your text. Use standard hyphens, colons, or parentheses if needed.
 
 Provide an honest diagnostic in this JSON format strictly matching:
 {
-  "headline": "Short punchy headline summarizing performance (e.g. Solid Foundation in Core Functions with Growth Priorities in SQL & Automation)",
+  "headline": "Short punchy headline summarizing performance (e.g. Solid Foundation in Core Functions with Growth Priorities in SQL & Financial Modeling)",
   "summary": "Clear, constructive 2-3 sentence paragraph detailing their strengths and specific growth areas.",
   "strengths": ["Clear strength 1", "Clear strength 2"],
   "weaknesses": ["Specific skill gap or misconception 1", "Specific skill gap 2"],
@@ -357,22 +363,22 @@ Provide an honest diagnostic in this JSON format strictly matching:
     const pct = params.overallPct;
 
     let fallbackCourses = [
-      "Cohort-Based Training",
-      "Dedicated Training",
-      "AI Automation"
+      "AidLearn Advanced Financial Modeling",
+      "Excel Dynamic Arrays & Masterclass",
+      "SQL for Business Intelligence"
     ];
 
     if (pct < 40) {
       fallbackCourses = [
-        "Computer Basics",
-        "Cohort-Based Training",
-        "Self-Paced Learning"
+        "Computer Basics & Foundation",
+        "Excel Dynamic Arrays & Masterclass",
+        "Cohort-Based Training (Flagship)"
       ];
     } else if (pct >= 75) {
       fallbackCourses = [
-        "Premium Accelerator",
-        "Dedicated Training",
-        "AI Automation"
+        "AidLearn Advanced Financial Modeling",
+        "SQL for Business Intelligence",
+        "AI Automation & Analytics"
       ];
     }
 

@@ -10,65 +10,64 @@ import {
   Briefcase,
   ArrowRight,
   ShieldCheck,
-  CheckCircle2,
   AlertTriangle,
+  RotateCcw,
 } from "lucide-react";
 
 interface Company {
   id: string;
   name: string;
-  industry: string | null;
+  industry?: string | null;
 }
 
-interface CandidateRegisterFormProps {
+interface Props {
   companies: Company[];
+  initialCompanyId?: string;
 }
 
 export default function CandidateRegisterForm({
   companies,
-}: CandidateRegisterFormProps) {
+  initialCompanyId,
+}: Props) {
   const router = useRouter();
 
   const [companyId, setCompanyId] = useState(
-    companies.length > 0 ? companies[0].id : ""
+    initialCompanyId || (companies.length > 0 ? companies[0].id : "")
   );
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [department, setDepartment] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [alreadyCompletedAttemptId, setAlreadyCompletedAttemptId] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setLoading(true);
     setError(null);
     setAlreadyCompletedAttemptId(null);
-    setLoading(true);
 
     try {
-      const selectedId = companyId || (companies.length > 0 ? companies[0].id : "");
-      if (!selectedId) {
-        throw new Error("Please select an organization to proceed.");
-      }
-
       const res = await fetch("/api/candidates/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fullName: fullName.trim(),
-          email: email.trim().toLowerCase(),
-          phone: phone.trim(),
-          department: department.trim() || undefined,
-          companyId: selectedId,
+          companyId,
+          fullName,
+          email,
+          phone,
+          department,
         }),
       });
 
       const data = await res.json();
+
       if (!res.ok) {
         if (data.alreadySubmitted && data.attemptId) {
           setAlreadyCompletedAttemptId(data.attemptId);
-          setError(data.error || "You have already completed this assessment. Retakes are not permitted.");
+          setError(data.error || "You have already completed this assessment session.");
           setLoading(false);
           return;
         }
@@ -97,18 +96,31 @@ export default function CandidateRegisterForm({
         <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-3 animate-in fade-in duration-150">
           <div className="flex items-center gap-2 font-bold text-xs">
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>Assessment Already Completed</span>
+            <span>Assessment Session Already Completed</span>
           </div>
-          <p className="text-xs text-amber-800">
-            You have already submitted this diagnostic evaluation. Retakes are disabled to protect test integrity.
+          <p className="text-xs text-amber-800 leading-relaxed">
+            You have already submitted this assessment session. Retakes on this specific question set are restricted to protect integrity. If your administrator has enabled a retake or published a new assessment session, please refresh and re-submit.
           </p>
-          <a
-            href={`/results/${alreadyCompletedAttemptId}`}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs transition-colors cursor-pointer"
-          >
-            <span>View Your Results Report</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </a>
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <a
+              href={`/results/${alreadyCompletedAttemptId}`}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-bold text-xs transition-colors cursor-pointer"
+            >
+              <span>View Your Results Report</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </a>
+            <button
+              type="button"
+              onClick={() => {
+                setAlreadyCompletedAttemptId(null);
+                setError(null);
+              }}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-amber-300 text-amber-900 font-bold text-xs hover:bg-amber-100 transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Try Again</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -128,7 +140,7 @@ export default function CandidateRegisterForm({
             >
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} {c.industry ? `· ${c.industry}` : ""}
+                  {c.name} {c.industry ? ` - ${c.industry}` : ""}
                 </option>
               ))}
             </select>
