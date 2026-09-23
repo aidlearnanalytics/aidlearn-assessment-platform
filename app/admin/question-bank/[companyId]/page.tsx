@@ -11,6 +11,7 @@ export default async function CompanyQuestionBankPage({
 }) {
   let company: any = null;
   let questions: any[] = [];
+  let assessment: any = null;
 
   try {
     company = await db.company.findUnique({
@@ -18,6 +19,11 @@ export default async function CompanyQuestionBankPage({
     });
 
     if (company) {
+      assessment = await db.assessment.findFirst({
+        where: { companyId: company.id },
+        orderBy: { createdAt: "desc" },
+      });
+
       questions = await db.question.findMany({
         include: {
           skill: true,
@@ -38,10 +44,9 @@ export default async function CompanyQuestionBankPage({
 
   return (
     <CompanyQuestionBankView
-      company={{
-        ...company,
-        questions,
-      }}
+      company={company}
+      assessment={assessment}
+      questions={questions}
     />
   );
 }

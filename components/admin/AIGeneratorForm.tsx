@@ -2,15 +2,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
+import { Sparkles, Loader2 } from "lucide-react";
 
-export default function AIGeneratorForm() {
+export function AIGeneratorForm() {
   const router = useRouter();
-  const [topic, setTopic] = useState("Financial Modeling & Dynamic Array Formulas");
-  const [industry, setIndustry] = useState("financial-services");
+  const [topic, setTopic] = useState("");
   const [difficulty, setDifficulty] = useState<"beginner" | "intermediate" | "advanced">("intermediate");
-  const [numQuestions, setNumQuestions] = useState(5);
+  const [industry, setIndustry] = useState("");
+  const [numQuestions, setNumQuestions] = useState<number>(10);
   const [notes, setNotes] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewQuestions, setPreviewQuestions] = useState<any[]>([]);
@@ -22,15 +23,18 @@ export default function AIGeneratorForm() {
     setError(null);
     setPreviewQuestions([]);
 
+    const requestedCount = Math.max(Number(numQuestions) || 1, 1);
+
     try {
       const res = await fetch("/api/questions/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           topic,
-          industry,
           difficulty,
-          numQuestions,
+          industry: industry || undefined,
+          numQuestions: requestedCount,
+          count: requestedCount,
           notes: notes || undefined,
           autoApprove: false,
         }),
@@ -38,18 +42,18 @@ export default function AIGeneratorForm() {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Generation failed.");
+        throw new Error(data.error || "Failed to generate questions.");
       }
 
       setPreviewQuestions(data.questions || []);
     } catch (err: any) {
-      setError(err.message || "Failed to generate questions with AI.");
+      setError(err.message || "An error occurred during generation.");
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleBatchSave(status: "DRAFT" | "APPROVED") {
+  async function handleBatchSave(status: "APPROVED" | "PENDING_APPROVAL") {
     setSavingBatch(true);
     setError(null);
 
@@ -129,14 +133,18 @@ export default function AIGeneratorForm() {
 
           <div>
             <label className="block text-xs font-semibold text-black/70 mb-1.5 uppercase tracking-wider">
-              # of Questions
+              Number of Questions to Generate <span className="text-red-500">*</span>
             </label>
             <input
               type="number"
               min={1}
-              max={20}
+              required
               value={numQuestions}
-              onChange={(e) => setNumQuestions(Number(e.target.value))}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                setNumQuestions(isNaN(val) ? 1 : Math.max(1, val));
+              }}
+              placeholder="e.g. 10, 25, 50"
               className="w-full rounded-xl border border-black/15 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]"
             />
           </div>
@@ -169,12 +177,12 @@ export default function AIGeneratorForm() {
           {loading ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              Generating Questions with Gemini AI...
+              Generating {numQuestions} Questions with Gemini AI...
             </>
           ) : (
             <>
               <Sparkles className="w-4 h-4" />
-              Generate Questions
+              Generate {numQuestions} Questions with AI
             </>
           )}
         </button>
