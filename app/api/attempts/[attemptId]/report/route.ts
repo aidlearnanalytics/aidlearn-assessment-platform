@@ -230,13 +230,13 @@ export async function GET(
             ? diag.strengths.map(
                 (s: string) =>
                   new Paragraph({
-                    text: `• ${s}`,
+                    text: `- ${s}`,
                     spacing: { after: 80 },
                   })
               )
             : [
                 new Paragraph({
-                  text: "• Solid foundational understanding of basic workflows and problem solving.",
+                  text: "- Solid foundational understanding of basic workflows and problem solving.",
                   spacing: { after: 80 },
                 }),
               ]),
@@ -251,13 +251,13 @@ export async function GET(
             ? diag.weaknesses.map(
                 (w: string) =>
                   new Paragraph({
-                    text: `• ${w}`,
+                    text: `- ${w}`,
                     spacing: { after: 80 },
                   })
               )
             : [
                 new Paragraph({
-                  text: "• Complex nested logic, dynamic array formulas, and execution optimization.",
+                  text: "- Complex nested logic, dynamic array formulas, and execution optimization.",
                   spacing: { after: 80 },
                 }),
               ]),
@@ -272,24 +272,24 @@ export async function GET(
             ? diag.recommendedCurriculum.map(
                 (m: string) =>
                   new Paragraph({
-                    text: `• ${m}`,
+                    text: `- ${m}`,
                     spacing: { after: 80 },
                   })
               )
             : [
                 new Paragraph({
-                  text: "• AidLearn Advanced Financial Modeling Masterclass",
+                  text: "- Cohort-Based Training (Microsoft Excel, Power BI & SQL)",
                   spacing: { after: 80 },
                 }),
                 new Paragraph({
-                  text: "• SQL for Business Intelligence & Enterprise Analytics",
+                  text: "- Dedicated Training (1-on-1 Mentorship & Advanced Analytics)",
                   spacing: { after: 80 },
                 }),
               ]),
           new Paragraph({
             children: [
               new TextRun({
-                text: "For course enrollment and tailored team training schedules, visit aidlearnanalytics.com/courses or contact your AidLearn client coordinator.",
+                text: "For course enrollment and tailored team training schedules, visit aidlearnanalytics.com/pricing or contact your AidLearn client coordinator.",
                 italics: true,
               }),
             ],

@@ -1,37 +1,29 @@
 import { db } from "@/lib/db";
 import { notFound } from "next/navigation";
-import { BrandLogo } from "@/components/common/BrandLogo";
-import {
-  CheckCircle,
-  AlertCircle,
-  Sparkles,
-  BookOpen,
-  ArrowRight,
-  ShieldCheck,
-  Clock,
-  Award,
-} from "lucide-react";
+import { CheckCircle, AlertCircle, Sparkles, BookOpen, ShieldCheck, ArrowRight, ExternalLink } from "lucide-react";
+import Link from "next/link";
+import { AIDLEARN_OFFICIAL_COURSES } from "@/lib/gemini";
 
-export const dynamic = "force-dynamic";
-
-export default async function ResultsPage({
-  params,
-}: {
+interface Props {
   params: { attemptId: string };
-}) {
+}
+
+export default async function AssessmentResultPage({ params }: Props) {
+  const { attemptId } = params;
+
   const attempt = await db.assessmentAttempt.findUnique({
-    where: { id: params.attemptId },
+    where: { id: attemptId },
     include: {
       participant: { include: { company: true } },
-      assessment: true,
-      answers: {
+      assessment: {
         include: {
-          question: {
-            include: { skill: true, category: true },
+          questions: {
+            include: { question: true },
           },
         },
       },
       violations: true,
+      answers: true,
     },
   });
 
@@ -39,113 +31,100 @@ export default async function ResultsPage({
     notFound();
   }
 
-  const pct = Math.round(attempt.overallPct ?? 0);
-  const totalQuestions = attempt.answers.length;
+  const participant = attempt.participant;
+  const assessment = attempt.assessment;
+  const totalQuestions = assessment.questions.length;
   const correctCount = attempt.answers.filter((a) => a.isCorrect).length;
-
-  // Parse category scores safely
-  let categoryScores: Record<string, any> = {};
-  if (attempt.categoryScores) {
-    try {
-      categoryScores =
-        typeof attempt.categoryScores === "string"
-          ? JSON.parse(attempt.categoryScores)
-          : (attempt.categoryScores as any);
-    } catch {
-      categoryScores = {};
-    }
-  }
-
-  // Parse AI diagnostic safely
-  let aiDiagnostic: any = null;
-  if (attempt.aiDiagnostic) {
-    try {
-      aiDiagnostic =
-        typeof attempt.aiDiagnostic === "string"
-          ? JSON.parse(attempt.aiDiagnostic)
-          : (attempt.aiDiagnostic as any);
-    } catch {
-      aiDiagnostic = null;
-    }
-  }
-
-  const scoreTheme =
-    pct >= 70
-      ? { text: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200", badge: "Proficient" }
-      : pct >= 50
-      ? { text: "text-[#1d4ed8]", bg: "bg-blue-50", border: "border-blue-200", badge: "Intermediate" }
-      : { text: "text-rose-600", bg: "bg-rose-50", border: "border-rose-200", badge: "Foundational Upskilling Recommended" };
-
+  const rawScore = attempt.overallScore ?? 0;
+  const pct = Math.round(attempt.overallPct ?? (totalQuestions > 0 ? (correctCount / totalQuestions) * 100 : 0));
+  const categoryScores = (attempt.categoryScores as Record<string, any>) || {};
+  const aiDiagnostic = (attempt.aiDiagnostic as any) || null;
   const violationsCount = attempt.violations.length;
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-[#0f172a] font-sans antialiased selection:bg-blue-600 selection:text-white pb-20">
-      {/* Top Navbar */}
-      <header className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-xs">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <BrandLogo subtitle="Diagnostic Results" />
+    <div className="min-h-screen bg-slate-50 text-slate-800 antialiased py-8 px-4 sm:px-6 lg:px-8">
+      <main className="max-w-4xl mx-auto space-y-8">
+        {/* Navigation & Header */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-slate-200">
           <div className="flex items-center gap-3">
-            <span className="text-xs font-semibold text-slate-500 hidden sm:inline">
-              Candidate: <span className="text-[#0f172a] font-bold">{attempt.participant.fullName}</span>
-            </span>
-            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-[#1d4ed8] border border-blue-200">
-              {attempt.participant.company.name}
-            </span>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 pt-10 space-y-8">
-        {/* Score Card Hero */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 sm:p-12 shadow-sm text-center relative overflow-hidden">
-          <div className="max-w-2xl mx-auto space-y-4">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700">
-              <Award className="w-4 h-4 text-[#1d4ed8]" />
-              Official Diagnostic Evaluation
+            <div className="w-10 h-10 rounded-xl bg-[#1d4ed8] flex items-center justify-center text-white font-black text-xl shadow-md">
+              A
             </div>
-
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#0f172a]">
-              Assessment Completed
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 font-medium">
-              Thank you, {attempt.participant.fullName}. Your skills evaluation for{" "}
-              <span className="text-slate-800 font-bold">{attempt.participant.company.name}</span> has been scored and analyzed.
-            </p>
-
-            {/* Score Ring / Badge */}
-            <div className="py-6">
-              <div className="inline-flex flex-col items-center justify-center w-36 h-36 rounded-full border-4 border-slate-100 bg-slate-50 shadow-inner">
-                <span className={`text-4xl font-black ${scoreTheme.text}`}>{pct}%</span>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">
-                  Overall Score
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-widest text-[#1d4ed8]">AidLearn Analytics</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-[#1d4ed8] border border-blue-100">
+                  Performance Diagnostic
                 </span>
               </div>
+              <h1 className="text-lg sm:text-xl font-black text-[#0f172a]">{assessment.name}</h1>
             </div>
+          </div>
 
-            {/* Score Status Pill */}
+          <div className="flex items-center gap-3">
+            <a
+              href={`/api/attempts/${attempt.id}/report`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-300 text-slate-700 font-bold text-xs uppercase tracking-wider shadow-sm hover:bg-slate-50 transition-all cursor-pointer"
+            >
+              Download Report (.docx)
+            </a>
+          </div>
+        </div>
+
+        {/* Candidate Profile & Score Summary */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <span className={`inline-flex px-4 py-1.5 rounded-full text-xs font-extrabold border ${scoreTheme.bg} ${scoreTheme.text} ${scoreTheme.border}`}>
-                {scoreTheme.badge}
-              </span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Candidate Evaluation</span>
+              <h2 className="text-xl sm:text-2xl font-black text-[#0f172a]">{participant.fullName}</h2>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
+                {participant.company.name} &bull; {participant.email}
+              </p>
             </div>
 
-            {/* Quick Metrics Bar */}
-            <div className="grid grid-cols-3 gap-4 pt-6 border-t border-slate-100 max-w-lg mx-auto text-xs">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
+              <ShieldCheck className="w-4 h-4" />
+              <span>Assessment Completed</span>
+            </div>
+          </div>
+
+          {/* Primary Metric Hero Card */}
+          <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white flex flex-col sm:flex-row items-center justify-between gap-6 shadow-md">
+            <div className="space-y-1 text-center sm:text-left">
+              <span className="text-xs font-bold uppercase tracking-widest text-indigo-300">Overall Proficiency Score</span>
+              <div className="flex items-baseline justify-center sm:justify-start gap-2">
+                <span className="text-4xl sm:text-5xl font-black tracking-tight">{pct}%</span>
+                <span className="text-sm font-semibold text-slate-300">
+                  ({rawScore} pts scored)
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 font-normal">
+                {pct >= 70
+                  ? "Proficient & Job-Ready: Demonstrates strong technical grasp across key competencies."
+                  : pct >= 50
+                  ? "Intermediate Competence: Solid fundamentals with targeted room for advanced growth."
+                  : "Foundational Level: Guided upskilling recommended to master workplace data workflows."}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/10 text-center w-full sm:w-auto">
               <div className="flex flex-col items-center">
-                <span className="font-bold text-slate-400 uppercase text-[10px]">Correct Answers</span>
-                <span className="text-sm sm:text-base font-black text-slate-900 mt-0.5">
+                <span className="font-bold text-slate-300 uppercase text-[10px]">Correct Answers</span>
+                <span className="text-sm sm:text-base font-black text-white mt-0.5">
                   {correctCount} / {totalQuestions}
                 </span>
               </div>
-              <div className="flex flex-col items-center border-x border-slate-200">
-                <span className="font-bold text-slate-400 uppercase text-[10px]">Time Taken</span>
-                <span className="text-sm sm:text-base font-black text-slate-900 mt-0.5">
+              <div className="flex flex-col items-center border-x border-white/10 px-3">
+                <span className="font-bold text-slate-300 uppercase text-[10px]">Time Taken</span>
+                <span className="text-sm sm:text-base font-black text-white mt-0.5">
                   {Math.round((attempt.timeTakenSecs ?? 0) / 60)} mins
                 </span>
               </div>
               <div className="flex flex-col items-center">
-                <span className="font-bold text-slate-400 uppercase text-[10px]">Integrity Audit</span>
-                <span className={`text-sm sm:text-base font-black mt-0.5 ${violationsCount === 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                <span className="font-bold text-slate-300 uppercase text-[10px]">Integrity Audit</span>
+                <span className={`text-sm sm:text-base font-black mt-0.5 ${violationsCount === 0 ? "text-emerald-400" : "text-amber-300"}`}>
                   {violationsCount === 0 ? "Verified Clean" : `${violationsCount} Flags`}
                 </span>
               </div>
@@ -215,13 +194,13 @@ export default async function ResultsPage({
               {/* Strengths */}
               <div className="p-5 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-3">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                   Key Strengths
                 </h3>
                 <ul className="space-y-2 text-xs text-emerald-950 font-medium leading-relaxed">
                   {(aiDiagnostic.strengths || ["Demonstrated core analytical understanding"]).map((str: string, i: number) => (
                     <li key={i} className="flex items-start gap-2">
-                      <span className="text-emerald-600 font-bold">•</span>
+                      <span className="text-emerald-600 font-bold">&bull;</span>
                       <span>{str}</span>
                     </li>
                   ))}
@@ -231,13 +210,13 @@ export default async function ResultsPage({
               {/* Weaknesses */}
               <div className="p-5 rounded-xl bg-amber-50/70 border border-amber-200 space-y-3">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-amber-900 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                   Identified Skill Gaps
                 </h3>
                 <ul className="space-y-2 text-xs text-amber-950 font-medium leading-relaxed">
-                  {(aiDiagnostic.weaknesses || ["Advanced modeling & formula optimization"]).map((weak: string, i: number) => (
+                  {(aiDiagnostic.weaknesses || ["Advanced modeling and formula optimization"]).map((weak: string, i: number) => (
                     <li key={i} className="flex items-start gap-2">
-                      <span className="text-amber-600 font-bold">•</span>
+                      <span className="text-amber-600 font-bold">&bull;</span>
                       <span>{weak}</span>
                     </li>
                   ))}
@@ -245,27 +224,60 @@ export default async function ResultsPage({
               </div>
             </div>
 
-            {/* Recommended Curriculum */}
+            {/* Recommended AidLearn Programmes */}
             {aiDiagnostic.recommendedCurriculum && aiDiagnostic.recommendedCurriculum.length > 0 && (
-              <div className="p-5 rounded-xl bg-blue-50/80 border border-blue-200 space-y-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-blue-900 flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-[#1d4ed8]" />
-                  Recommended AidLearn Learning Modules
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {aiDiagnostic.recommendedCurriculum.map((curr: string, i: number) => (
-                    <div key={i} className="p-3 bg-white rounded-lg border border-blue-200 text-xs font-bold text-slate-800 flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#1d4ed8]" />
-                      {curr}
-                    </div>
-                  ))}
+              <div className="p-5 sm:p-6 rounded-xl bg-blue-50/80 border border-blue-200 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-blue-900 flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-[#1d4ed8] shrink-0" />
+                    Recommended AidLearn Analytics Programmes
+                  </h3>
+                  <a
+                    href="https://aidlearnanalytics.com/pricing"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-[#1d4ed8] hover:underline"
+                  >
+                    View Curriculum &amp; Details <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
                 </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {aiDiagnostic.recommendedCurriculum.map((curr: string, i: number) => {
+                    const matchedInfo = AIDLEARN_OFFICIAL_COURSES.find(
+                      (c) => curr.toLowerCase().includes(c.title.toLowerCase()) || curr.toLowerCase().includes(c.shortTitle.toLowerCase())
+                    );
+
+                    return (
+                      <div key={i} className="p-4 bg-white rounded-xl border border-blue-200 text-xs shadow-sm space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-[#1d4ed8] shrink-0" />
+                          <h4 className="font-extrabold text-slate-900">{curr}</h4>
+                        </div>
+                        {matchedInfo && (
+                          <p className="text-[11px] text-slate-600 font-normal leading-relaxed pl-4">
+                            {matchedInfo.focus}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {aiDiagnostic.learningActionPlan && (
+                  <div className="pt-2 border-t border-blue-200/60">
+                    <p className="text-xs text-blue-950 font-medium leading-relaxed">
+                      <span className="font-bold text-[#1d4ed8]">Action Plan: </span>
+                      {aiDiagnostic.learningActionPlan}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>
         )}
 
-        {/* CTA to Main Platform */}
+        {/* CTA to Main Platform Pricing / Course Details */}
         <div className="rounded-2xl bg-gradient-to-r from-blue-700 to-indigo-800 p-6 sm:p-10 text-white shadow-md text-center space-y-5">
           <div className="max-w-2xl mx-auto space-y-2">
             <h2 className="text-xl sm:text-2xl font-bold tracking-tight">
@@ -278,7 +290,7 @@ export default async function ResultsPage({
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <a
-              href="https://aidlearnanalytics.com/courses"
+              href="https://aidlearnanalytics.com/pricing"
               target="_blank"
               rel="noopener noreferrer"
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-white text-[#1d4ed8] font-bold text-xs uppercase tracking-wider shadow-sm hover:bg-blue-50 transition-all cursor-pointer"

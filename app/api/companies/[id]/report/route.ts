@@ -238,21 +238,21 @@ Paragraph 3: Strategic Training Roadmap and recommendations for corporate traini
             spacing: { after: 150 },
           }),
           new Paragraph({
-            text: "• Executive & Advanced Financial Modeling Masterclass: Accelerates complex valuation, forecasting, dynamic scenario analysis, and executive board-ready dashboarding.",
+            text: "- Corporate Training & Executive Analytics: Accelerates complex valuation, forecasting, dynamic scenario analysis, and executive board-ready dashboarding.",
             spacing: { after: 100 },
           }),
           new Paragraph({
-            text: "• Enterprise Business Intelligence & Power BI: Bridges the gap between raw corporate spreadsheets and automated, self-refreshing interactive dashboards.",
+            text: "- Enterprise Business Intelligence & Power BI: Bridges the gap between raw corporate spreadsheets and automated, self-refreshing interactive dashboards.",
             spacing: { after: 100 },
           }),
           new Paragraph({
-            text: "• SQL & Data Architecture for Finance & Operations: Empowers staff to query enterprise databases directly and automate repetitive month-end data consolidation.",
+            text: "- SQL & Data Architecture for Finance & Operations: Empowers staff to query enterprise databases directly and automate repetitive month-end data consolidation.",
             spacing: { after: 200 },
           }),
           new Paragraph({
             children: [
               new TextRun({
-                text: "For customized cohort scheduling, executive briefing sessions, or LMS integration, visit aidlearnanalytics.com/courses or contact the AidLearn Enterprise Advisory Team.",
+                text: "For customized cohort scheduling, executive briefing sessions, or LMS integration, visit aidlearnanalytics.com/pricing or contact the AidLearn Enterprise Advisory Team.",
                 italics: true,
               }),
             ],
