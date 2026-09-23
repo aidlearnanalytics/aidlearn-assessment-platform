@@ -5,52 +5,48 @@ import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const questionId = params.id;
-    if (!questionId) {
-      return NextResponse.json({ error: "Question ID is required" }, { status: 400 });
+    const body = await req.json();
+    const { ids } = body;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return NextResponse.json(
+        { error: "No question IDs provided for deletion." },
+        { status: 400 }
+      );
     }
 
-    // 1. Find all linked assessment IDs to recount later
+    // 1. Find all linked assessment IDs
     const links = await db.assessmentQuestion.findMany({
-      where: { questionId },
+      where: { questionId: { in: ids } },
       select: { assessmentId: true },
     }).catch(() => []);
     const assessmentIds = Array.from(new Set(links.map((l) => l.assessmentId)));
 
-    // 2. Cascade delete dependent Answers to prevent Postgres foreign key violation
+    // 2. Cascade delete dependent Answers to prevent Postgres foreign key violations
     await db.answer.deleteMany({
-      where: { questionId },
+      where: { questionId: { in: ids } },
     }).catch((err) => {
-      console.warn("Answer delete warning:", err.message);
+      console.warn("Bulk answer delete warning:", err.message);
     });
 
-    // 3. Delete junction AssessmentQuestion links
+    // 3. Delete junction AssessmentQuestion records
     await db.assessmentQuestion.deleteMany({
-      where: { questionId },
+      where: { questionId: { in: ids } },
     }).catch((err) => {
-      console.warn("AssessmentQuestion delete warning:", err.message);
+      console.warn("Bulk assessmentQuestion delete warning:", err.message);
     });
 
-    // 4. Delete Question record
-    try {
-      await db.question.delete({
-        where: { id: questionId },
-      });
-    } catch (qErr: any) {
-      if (qErr.code !== "P2025") {
-        throw qErr;
-      }
-    }
+    // 4. Delete the Questions
+    const deleteResult = await db.question.deleteMany({
+      where: { id: { in: ids } },
+    });
 
     // 5. Recount and update affected assessments
     for (const aId of assessmentIds) {
@@ -63,15 +59,19 @@ export async function DELETE(
           data: { numQuestions: count },
         });
       } catch (countErr) {
-        console.warn("Assessment count recount warning:", countErr);
+        console.warn("Assessment recount warning:", countErr);
       }
     }
 
-    return NextResponse.json({ success: true, deletedId: questionId });
+    return NextResponse.json({
+      success: true,
+      deletedCount: deleteResult.count,
+      ids,
+    });
   } catch (err: any) {
-    console.error("Delete Question Route Error:", err);
+    console.error("Bulk Delete Questions Error:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to delete question" },
+      { error: err.message || "Failed to bulk delete questions." },
       { status: 500 }
     );
   }

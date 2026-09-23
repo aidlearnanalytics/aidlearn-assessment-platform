@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -12,12 +12,14 @@ import {
   Trash2,
   CheckCircle2,
   HelpCircle,
-  Code2,
   Building2,
   Layers,
   X,
   Loader2,
   FileSpreadsheet,
+  CheckSquare,
+  Square,
+  AlertTriangle,
 } from "lucide-react";
 
 interface OptionItem {
@@ -61,13 +63,30 @@ interface CompanyQuestionBankViewProps {
 export default function CompanyQuestionBankView({
   company,
   assessment,
-  questions: rawQuestions,
+  questions: initialQuestions,
 }: CompanyQuestionBankViewProps) {
-  const questions: QuestionItem[] = rawQuestions || (company as any)?.questions || [];
   const router = useRouter();
+
+  // Local state for questions list
+  const [questionsList, setQuestionsList] = useState<QuestionItem[]>(
+    initialQuestions || company.questions || []
+  );
+
+  useEffect(() => {
+    setQuestionsList(initialQuestions || company.questions || []);
+  }, [initialQuestions, company.questions]);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [filterDifficulty, setFilterDifficulty] = useState("ALL");
+
+  // Selection & Bulk Actions State
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deletingBulk, setDeletingBulk] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [statusNotification, setStatusNotification] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
 
   // Modal 1: Create Manual Question
   const [showNewModal, setShowNewModal] = useState(false);
@@ -94,13 +113,139 @@ export default function CompanyQuestionBankView({
   const [generating, setGenerating] = useState(false);
   const [generationMsg, setGenerationMsg] = useState<string | null>(null);
 
-  const filteredQuestions = questions.filter((q: QuestionItem) => {
+  const filteredQuestions = questionsList.filter((q: QuestionItem) => {
     const matchesSearch =
       q.prompt.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (q.explanation && q.explanation.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesDiff = filterDifficulty === "ALL" || q.difficulty === filterDifficulty;
     return matchesSearch && matchesDiff;
   });
+
+  // Check if all currently filtered questions are selected
+  const isAllSelected =
+    filteredQuestions.length > 0 &&
+    filteredQuestions.every((q) => selectedIds.has(q.id));
+
+  // Toggle single question selection
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  // Toggle select all filtered questions
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds(new Set());
+    } else {
+      const allFilteredIds = filteredQuestions.map((q) => q.id);
+      setSelectedIds(new Set(allFilteredIds));
+    }
+  };
+
+  // Deselect all
+  const handleDeselectAll = () => {
+    setSelectedIds(new Set());
+  };
+
+  // Single Question Delete
+  const handleDeleteQuestion = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this question? It will be permanently removed from Supabase and the assessment curriculum.")) {
+      return;
+    }
+
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/questions/${id}`, { method: "DELETE" });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        // Immediately remove from local state
+        setQuestionsList((prev) => prev.filter((q) => q.id !== id));
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        setStatusNotification({
+          type: "success",
+          message: "Question deleted successfully.",
+        });
+        setTimeout(() => setStatusNotification(null), 3000);
+        router.refresh();
+      } else {
+        throw new Error(data.error || "Failed to delete question");
+      }
+    } catch (err: any) {
+      console.error(err);
+      setStatusNotification({
+        type: "error",
+        message: err.message || "Could not delete question. Please try again.",
+      });
+      setTimeout(() => setStatusNotification(null), 4000);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  // Bulk Delete Selected Questions
+  const handleBulkDelete = async () => {
+    const idsToDelete = Array.from(selectedIds);
+    if (idsToDelete.length === 0) return;
+
+    if (
+      !confirm(
+        `Are you sure you want to permanently delete ${idsToDelete.length} selected question${
+          idsToDelete.length > 1 ? "s" : ""
+        }? This action cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    setDeletingBulk(true);
+    try {
+      const res = await fetch("/api/questions/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: idsToDelete }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        // Immediately remove from local list
+        const deletedSet = new Set(idsToDelete);
+        setQuestionsList((prev) => prev.filter((q) => !deletedSet.has(q.id)));
+        setSelectedIds(new Set());
+        setStatusNotification({
+          type: "success",
+          message: `Successfully deleted ${idsToDelete.length} question${
+            idsToDelete.length > 1 ? "s" : ""
+          } from the question bank.`,
+        });
+        setTimeout(() => setStatusNotification(null), 3500);
+        router.refresh();
+      } else {
+        throw new Error(data.error || "Bulk deletion failed");
+      }
+    } catch (err: any) {
+      console.error(err);
+      setStatusNotification({
+        type: "error",
+        message: err.message || "Failed to delete selected questions. Please try again.",
+      });
+      setTimeout(() => setStatusNotification(null), 4000);
+    } finally {
+      setDeletingBulk(false);
+    }
+  };
 
   const handleCreateManualQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -197,20 +342,34 @@ export default function CompanyQuestionBankView({
     }
   };
 
-  const handleDeleteQuestion = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this question from this company's bank?")) return;
-    try {
-      const res = await fetch(`/api/questions/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        router.refresh();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      {/* Status Toast Notification */}
+      {statusNotification && (
+        <div
+          className={`p-4 rounded-2xl flex items-center justify-between border shadow-md animate-in fade-in slide-in-from-top-2 duration-200 ${
+            statusNotification.type === "success"
+              ? "bg-emerald-50 border-emerald-300 text-emerald-800"
+              : "bg-rose-50 border-rose-300 text-rose-800"
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            {statusNotification.type === "success" ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+            )}
+            <span className="text-xs sm:text-sm font-bold">{statusNotification.message}</span>
+          </div>
+          <button
+            onClick={() => setStatusNotification(null)}
+            className="p-1 rounded-lg hover:bg-black/5 text-current cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header Bar */}
       <div className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
@@ -258,18 +417,18 @@ export default function CompanyQuestionBankView({
         <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-4 border-t border-slate-100 pt-6">
           <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Questions</span>
-            <p className="mt-1 text-2xl font-black text-slate-900">{questions.length}</p>
+            <p className="mt-1 text-2xl font-black text-slate-900">{questionsList.length}</p>
           </div>
           <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Multiple Choice</span>
             <p className="mt-1 text-2xl font-black text-blue-600">
-              {questions.filter((q: QuestionItem) => q.type === "MULTIPLE_CHOICE").length}
+              {questionsList.filter((q: QuestionItem) => q.type === "MULTIPLE_CHOICE").length}
             </p>
           </div>
           <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Formula / Practical</span>
             <p className="mt-1 text-2xl font-black text-indigo-600">
-              {questions.filter((q: QuestionItem) => q.type === "FORMULA_ENTRY" || q.type === "SHORT_ANSWER").length}
+              {questionsList.filter((q: QuestionItem) => q.type === "FORMULA_ENTRY" || q.type === "SHORT_ANSWER").length}
             </p>
           </div>
           <div className="rounded-xl bg-slate-50 p-4 border border-slate-100">
@@ -281,33 +440,106 @@ export default function CompanyQuestionBankView({
         </div>
       </div>
 
-      {/* Filters & Search */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="relative w-full sm:w-96">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search questions or formulas..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
-          />
+      {/* Control Bar: Search, Filters, Select All & Bulk Delete */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs space-y-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+          <div className="flex flex-1 items-center gap-3">
+            {/* Select All Checkbox Button */}
+            {filteredQuestions.length > 0 && (
+              <button
+                type="button"
+                onClick={handleToggleSelectAll}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold border transition-colors cursor-pointer shrink-0 ${
+                  isAllSelected
+                    ? "bg-blue-50 border-blue-300 text-blue-700"
+                    : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+                }`}
+                title={isAllSelected ? "Deselect All Questions" : "Select All Questions"}
+              >
+                {isAllSelected ? (
+                  <CheckSquare className="w-4 h-4 text-blue-600" />
+                ) : (
+                  <Square className="w-4 h-4 text-slate-400" />
+                )}
+                <span>
+                  {isAllSelected
+                    ? "Deselect All"
+                    : `Select All (${filteredQuestions.length})`}
+                </span>
+              </button>
+            )}
+
+            {/* Search Input */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search questions by formula, prompt, or keywords..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-slate-400 shrink-0" />
+            <select
+              value={filterDifficulty}
+              onChange={(e) => setFilterDifficulty(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="ALL">All Difficulties</option>
+              <option value="EASY">Easy</option>
+              <option value="INTERMEDIATE">Intermediate</option>
+              <option value="HARD">Hard</option>
+              <option value="EXPERT">Expert</option>
+            </select>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Filter className="h-4 w-4 text-slate-400 shrink-0" />
-          <select
-            value={filterDifficulty}
-            onChange={(e) => setFilterDifficulty(e.target.value)}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
-          >
-            <option value="ALL">All Difficulties</option>
-            <option value="EASY">Easy</option>
-            <option value="INTERMEDIATE">Intermediate</option>
-            <option value="HARD">Hard</option>
-            <option value="EXPERT">Expert</option>
-          </select>
-        </div>
+        {/* Floating / Sticky Bulk Action Bar when questions are selected */}
+        {selectedIds.size > 0 && (
+          <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-top-1 duration-150">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg bg-blue-100 text-blue-800 text-xs font-extrabold">
+                {selectedIds.size} Selected
+              </span>
+              <span className="text-xs text-slate-500">
+                You can delete all selected items at once or uncheck items to refine.
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDeselectAll}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-bold transition-colors cursor-pointer"
+              >
+                Clear Selection
+              </button>
+
+              <button
+                type="button"
+                onClick={handleBulkDelete}
+                disabled={deletingBulk}
+                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm transition-all disabled:opacity-60 cursor-pointer"
+              >
+                {deletingBulk ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting {selectedIds.size}...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Selected ({selectedIds.size})</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Questions List */}
@@ -320,99 +552,141 @@ export default function CompanyQuestionBankView({
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {filteredQuestions.map((q, idx) => (
-            <div
-              key={q.id}
-              className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs hover:border-slate-300 transition-all"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3 flex-1">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-black text-slate-600">
-                    {idx + 1}
-                  </span>
-                  <div className="space-y-2 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-blue-700 border border-blue-200">
-                        {q.type.replace("_", " ")}
-                      </span>
-                      <span
-                        className={`rounded-md px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider ${
-                          q.difficulty === "HARD" || q.difficulty === "EXPERT"
-                            ? "bg-red-50 text-red-700 border border-red-200"
-                            : q.difficulty === "INTERMEDIATE"
-                            ? "bg-amber-50 text-amber-700 border border-amber-200"
-                            : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+        <div className="space-y-3">
+          {filteredQuestions.map((q: QuestionItem, idx: number) => {
+            const isSelected = selectedIds.has(q.id);
+            const isDeleting = deletingId === q.id;
+
+            return (
+              <div
+                key={q.id}
+                onClick={() => handleToggleSelect(q.id)}
+                className={`group rounded-2xl border bg-white p-5 shadow-2xs transition-all cursor-pointer relative ${
+                  isSelected
+                    ? "border-blue-400 bg-blue-50/20 shadow-xs ring-2 ring-blue-500/20"
+                    : "border-slate-200 hover:border-slate-300"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  {/* Left: Checkbox + Question Number + Details */}
+                  <div className="flex items-start gap-3.5 flex-1">
+                    {/* Checkbox */}
+                    <div
+                      className="pt-0.5"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleSelect(q.id);
+                      }}
+                    >
+                      <button
+                        type="button"
+                        className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors cursor-pointer ${
+                          isSelected
+                            ? "bg-blue-600 border-blue-600 text-white"
+                            : "border-slate-300 bg-white hover:border-blue-400"
                         }`}
                       >
-                        {q.difficulty}
-                      </span>
-                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                        {q.points} pt{q.points > 1 ? "s" : ""}
-                      </span>
-                      {q.source === "AI_GENERATED" && (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-0.5 text-[10px] font-bold text-purple-700 border border-purple-200">
-                          <Sparkles className="h-3 w-3" /> AI Generated
-                        </span>
-                      )}
+                        {isSelected && <CheckCircle2 className="w-3.5 h-3.5" />}
+                      </button>
                     </div>
 
-                    <p className="text-sm font-bold text-slate-900 leading-snug">{q.prompt}</p>
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-black text-slate-600">
+                      {idx + 1}
+                    </span>
 
-                    {/* Options list if multiple choice */}
-                    {q.options && q.options.length > 0 && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
-                        {q.options.map((opt, oIdx) => (
-                          <div
-                            key={oIdx}
-                            className={`flex items-center gap-2.5 rounded-xl px-3.5 py-2 text-xs ${
-                              opt.isCorrect
-                                ? "bg-emerald-50 border border-emerald-300 text-emerald-900 font-bold"
-                                : "bg-slate-50 border border-slate-200 text-slate-600"
-                            }`}
-                          >
-                            <span
-                              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[10px] font-bold ${
+                    <div className="space-y-2 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-blue-700 border border-blue-200">
+                          {q.type.replace("_", " ")}
+                        </span>
+                        <span
+                          className={`rounded-md px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider ${
+                            q.difficulty === "HARD" || q.difficulty === "EXPERT"
+                              ? "bg-red-50 text-red-700 border border-red-200"
+                              : q.difficulty === "INTERMEDIATE"
+                              ? "bg-amber-50 text-amber-700 border border-amber-200"
+                              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          }`}
+                        >
+                          {q.difficulty}
+                        </span>
+                        <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                          {q.points} pt{q.points > 1 ? "s" : ""}
+                        </span>
+                        {q.source === "AI_GENERATED" && (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-0.5 text-[10px] font-bold text-purple-700 border border-purple-200">
+                            <Sparkles className="h-3 w-3" /> AI Generated
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-sm font-bold text-slate-900 leading-snug">{q.prompt}</p>
+
+                      {/* Options list if multiple choice */}
+                      {q.options && q.options.length > 0 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                          {q.options.map((opt, oIdx) => (
+                            <div
+                              key={oIdx}
+                              className={`flex items-center gap-2.5 rounded-xl px-3.5 py-2 text-xs ${
                                 opt.isCorrect
-                                  ? "bg-emerald-600 text-white"
-                                  : "bg-slate-200 text-slate-600"
+                                  ? "bg-emerald-50 border border-emerald-300 text-emerald-900 font-bold"
+                                  : "bg-slate-50 border border-slate-200 text-slate-600"
                               }`}
                             >
-                              {String.fromCharCode(65 + oIdx)}
-                            </span>
-                            <span className="truncate">{opt.text}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                              <span
+                                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[10px] font-bold ${
+                                  opt.isCorrect
+                                    ? "bg-emerald-600 text-white"
+                                    : "bg-slate-200 text-slate-600"
+                                }`}
+                              >
+                                {String.fromCharCode(65 + oIdx)}
+                              </span>
+                              <span className="truncate">{opt.text}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
-                    {/* Formula answer if practical */}
-                    {q.correctAnswer && (
-                      <div className="rounded-xl bg-slate-900 px-3.5 py-2 font-mono text-xs text-emerald-400 inline-block">
-                        Answer: {q.correctAnswer}
-                      </div>
-                    )}
+                      {/* Formula answer if practical */}
+                      {q.correctAnswer && (
+                        <div className="rounded-xl bg-slate-900 px-3.5 py-2 font-mono text-xs text-emerald-400 inline-block">
+                          Answer: {q.correctAnswer}
+                        </div>
+                      )}
 
-                    {/* Explanation */}
-                    {q.explanation && (
-                      <p className="text-xs text-slate-500 italic pt-1">
-                        <span className="font-semibold text-slate-600 not-italic">Rationale:</span>{" "}
-                        {q.explanation}
-                      </p>
-                    )}
+                      {/* Explanation */}
+                      {q.explanation && (
+                        <p className="text-xs text-slate-500 italic pt-1">
+                          <span className="font-semibold text-slate-600 not-italic">Rationale:</span>{" "}
+                          {q.explanation}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right: Individual Delete Button */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteQuestion(q.id, e)}
+                      disabled={isDeleting}
+                      className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all cursor-pointer"
+                      title="Delete Question"
+                      aria-label="Delete Question"
+                    >
+                      {isDeleting ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-rose-600" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </button>
                   </div>
                 </div>
-
-                <button
-                  onClick={() => handleDeleteQuestion(q.id)}
-                  className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer"
-                  title="Remove from bank"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
